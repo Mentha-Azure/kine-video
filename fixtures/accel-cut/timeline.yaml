@@ -1,0 +1,51 @@
+# Kine fixture — accel:cut 幕（回归用例⑥：加 shots(accel=cut) → explain 显示 lt 压缩 + impact 提示重校）
+# 用途：compile 级测试（无需浏览器）。3 镜头 / dur 6.0 → cutLen 2.0 → accFactor=min(3,1.62)=1.62，lt 压缩 + 末段保持
+schema: kine/1
+
+project:
+  id: accel-cut
+  title: Accel Cut Fixture
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 6.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: main, until: 6.0, ratio: 1.0 }
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+
+render:
+  surface: canvas
+  workers: 4
+
+scenes:
+  - id: s1
+    name: 加速幕
+    dur: 6.0
+    rate: 1.0
+    accel: cut
+    camera: { z1: 1.0, tw: 0.3, bpm: 108 }
+    layers:
+      - kind: widget
+        id: w1
+        widget: bdTitle
+        props: { text: "ACCEL", size: 60 }
+        place: { x: 960, y: 540, anchor: center }
+    shots:
+      - { dur: 1.8 }
+      - { dur: 2.0, transition: { kind: wipe_blinds, variant: 0 } }
+      - { dur: 2.2, transition: { kind: wipe_redbar, variant: 1 } }
+
+asserts: []

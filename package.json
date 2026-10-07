@@ -1,0 +1,41 @@
+{
+  "name": "kine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kine — deterministic AI-native video editing/compositing engine",
+  "scripts": {
+    "kine": "tsx packages/agent/src/cli.ts",
+    "init": "tsx packages/agent/src/cli.ts init",
+    "audit": "tsx packages/agent/src/cli.ts audit",
+    "render": "tsx packages/agent/src/cli.ts render",
+    "verify": "tsx packages/agent/src/cli.ts verify",
+    "build:web": "tsx tools/build-web.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@kine/agent": "workspace:*",
+    "@kine/audio": "workspace:*",
+    "@kine/dsl": "workspace:*",
+    "@kine/metrics": "workspace:*",
+    "@kine/render": "workspace:*",
+    "@kine/runtime": "workspace:*",
+    "@kine/store": "workspace:*",
+    "@kine/widgets": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@types/node": "^24.0.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/proper-lockfile": "^4.1.4",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0",
+    "pngjs": "^7.0.0",
+    "proper-lockfile": "^4.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.0",
+    "vitest": "^5.0.3",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  }
+}

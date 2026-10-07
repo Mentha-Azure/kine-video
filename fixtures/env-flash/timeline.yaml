@@ -1,0 +1,49 @@
+# Kine fixture — env 驱动强拍（回归用例①：energy 驱动提亮 → audit FAIL L-AUD-003）
+# theme.post.flash.mode: env 是灰白病根因（源项目实测把黑电平从 RGB(6,6,8) 抬到 (28,28,32)），必须被 lint 拒绝
+schema: kine/1
+
+project:
+  id: env-flash
+  title: Env Flash Fixture
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 2.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: main, until: 2.0, ratio: 1.0 }
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+  post:
+    vignette: { base: 0.20, tw_gain: 0.11, beat_gain: 0.09, max: 0.90 }
+    scanline: { base: 0.085, tw_gain: 0.020, max: 0.12 }
+    flash: { max_alpha: 0.085, mode: env }     # ← 违规：用能量包络驱动强拍（灰白病根因）
+
+render:
+  surface: canvas
+  workers: 4
+
+scenes:
+  - id: s1
+    name: 场景
+    dur: 2.0
+    camera: { z1: 1.0, tw: 0.5, bpm: 108 }
+    layers:
+      - kind: widget
+        id: w1
+        widget: bdTitle
+        props: { text: "ENV", size: 60 }
+        place: { x: 960, y: 540, anchor: center }
+
+asserts: []

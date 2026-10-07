@@ -1,0 +1,20 @@
+{
+  "name": "@kine/dsl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./time": "./src/time.ts",
+    "./camera": "./src/camera.ts",
+    "./rand": "./src/rand.ts",
+    "./schema": "./src/schema.ts",
+    "./hash": "./src/hash.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  }
+}

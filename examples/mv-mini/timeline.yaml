@@ -1,0 +1,224 @@
+# =============================================================================
+# Kine Timeline DSL — 示例工程「mv-mini」
+# 用于验证 M0 确定性内核与完整工作流的小型 MV（24s / 1080p60）
+#   kine audit → kine check → kine render → kine verify → kine preview
+# 双速 pace：0-20s 常速，20-24s 1.25x（用于验证断点分片与时间映射）
+# =============================================================================
+schema: kine/1
+
+project:
+  id: mv-mini
+  title: Kine MV Mini
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 24.0          # 成片秒（唯一对外时长）
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: main, until: 20.0, ratio: 1.0 }
+    - { id: fast, until: 24.0, ratio: 1.25 }   # 渲染时间 25s = 20*1 + 4*1.25
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+  accent_secondary: { color: '#4da3ff', max_frames: 2, use: glitch }
+  font: { family: "Consolas, 'Cascadia Mono', 'Courier New', monospace", scale: 1.0, base: 32 }
+  post:
+    vignette: { base: 0.20, tw_gain: 0.11, beat_gain: 0.09, max: 0.90 }
+    scanline: { base: 0.085, tw_gain: 0.020, max: 0.12 }
+    flash: { max_alpha: 0.085 }
+    black_level: { rgb_min: 6, rgb_max: 9 }
+
+render:
+  surface: canvas
+  workers: 4
+  purity: [no_random, no_accumulate, no_wallclock, no_css_autoplay]
+
+audio:
+  music: { file: assets/song.wav, gain: 0.90, fade_out: { at: 20.4, dur: 0.6, shape: cosine }, cut_from: 21.0 }
+  sfx:
+    synth: offline
+    buses:
+      - { id: bed, gain: 1.0 }
+      - { id: hits, gain: 1.0 }
+    events:
+      - { at: 0.40, clock: output, sfx: rain, gain: 0.60, bus: bed }
+      - { at: 1.20, clock: output, sfx: keyboard, gain: 0.80, bus: hits, params: { period: 0.14, clicks: 26 } }
+      - { at: 5.20, clock: output, sfx: heartbreak, gain: 0.90, bus: hits }
+      - { at: 10.60, clock: output, sfx: glitch, gain: 0.72, bus: hits }
+      - { at: 18.40, clock: output, sfx: heartbreak, gain: 0.90, bus: hits }
+      - { at: 21.00, clock: output, sfx: piano_motif, gain: 0.95, bus: hits }
+  drone_levels: [0.4, 0.3, 0.5, 0.8]
+
+scenes:
+  # ---------------------------------------------------------------- 幕1 boot
+  - id: boot
+    act: open
+    name: 开机
+    dur: 5.0
+    rate: 1.0
+    accel: none
+    camera: { z1: 1.0, tw: 0.35, bpm: 108 }
+    layers:
+      - kind: particles
+        id: p_far_boot
+        depth: far
+        count: 84
+        size: [1.2, 2.7]
+        parallax: 0.062
+      - kind: widget
+        id: term
+        widget: bdTerminal
+        alias: 开机终端
+        tags: [hud, terminal]
+        props: { size: 34, title: "KINE://BOOT", lines: 18, speed: 1.5 }
+        place: { x: 260, y: 300, anchor: tl }
+      - kind: text
+        id: boot_text
+        alias: 开机副标题
+        content: "> initializing deterministic compositor · loading ir · pinning seed 7 · frame(N) = f(N) is the only truth we keep"
+        style: { size: 1.15, weight: 500, align: left }
+        place: { x: 260, y: 880, anchor: tl }
+        type_period: 0.045
+        fade_out: 0.6
+    effects:
+      - { fx: redbar, params: { period: 2.6, width: 0.03, alpha: 0.14 } }
+      - { fx: redbar, params: { period: 1.6, width: 0.02, alpha: 0.12 } }
+
+  # ---------------------------------------------------------------- 幕2 title
+  - id: title
+    act: main
+    name: 标题
+    dur: 5.0
+    rate: 1.0
+    camera: { z1: 1.02, tw: 0.55, bpm: 108 }
+    layers:
+      - kind: particles
+        id: p_near_title
+        depth: near
+        count: 64
+        size: [1.4, 3.2]
+        parallax: 0.085
+      - kind: widget
+        id: wave_title
+        widget: bdWave
+        alias: 波形带
+        tags: [hud]
+        props: { waves: 3, speed: 1.7 }
+        place: { x: 960, y: 790, anchor: center, w: 1300, h: 240 }
+      - kind: widget
+        id: title_main
+        widget: bdTitle
+        alias: 主标题
+        tags: [title]
+        props: { text: "world.execute(me)", sub: "kine // mv-mini // v0.1", size: 88, type_period: 0.05, underline_period: 1.2 }
+        place: { x: 960, y: 470, anchor: center }
+    shots:
+      - { dur: 2.4 }
+      - { dur: 2.6, transition: { kind: wipe_redbar, variant: 1 } }
+    effects:
+      - { fx: redbar, params: { period: 2.2, width: 0.032, alpha: 0.14 } }
+      - { fx: redbar, params: { period: 1.4, width: 0.018, alpha: 0.12 } }
+
+  # ---------------------------------------------------------------- 幕3 code
+  - id: code
+    act: main
+    name: 代码
+    dur: 8.0
+    rate: 1.0
+    accel: none
+    camera: { z1: 1.03, tw: 0.7, bpm: 108, roll: -0.4 }
+    layers:
+      - kind: particles
+        id: p_far_code
+        depth: far
+        count: 84
+        size: [1.2, 2.8]
+      - kind: widget
+        id: bg_code
+        widget: bdBG
+        alias: 底纹网格
+        tags: [bg]
+        props: { cell: 30, sweep: 6 }
+        place: { x: 960, y: 540, anchor: center, w: 1700, h: 950 }
+      - kind: widget
+        id: hex
+        widget: bdHex
+        alias: 十六进制转储
+        tags: [hud, data]
+        props: { lines: 18, speed: 2.2 }
+        place: { x: 1180, y: 210, anchor: tl }
+      - kind: widget
+        id: flow
+        widget: bdFlow
+        alias: 构建流水线
+        tags: [hud, pipeline]
+        props: { nodes: 12, period: 2.8 }
+        place: { x: 300, y: 640, anchor: tl }
+      - kind: text
+        id: code_text
+        content: "compiling scenes · mapping clocks · hashing frames · pinning every byte"
+        style: { size: 1.0, weight: 500, align: left }
+        place: { x: 300, y: 900, anchor: tl }
+        type_period: 0.075
+    shots:
+      - { dur: 2.6 }
+      - { dur: 2.7, transition: { kind: whip_h, variant: 0 }, camera_override: { z1: 1.06 } }
+      - { dur: 2.7, transition: { kind: wipe_blinds, variant: 1 } }
+    effects:
+      - { fx: chroma, params: { slices: 8, offset: 3 }, window: [2.2, 3.6] }
+
+  # ---------------------------------------------------------------- 幕4 finale
+  - id: finale
+    act: close
+    name: 终幕
+    dur: 7.0
+    rate: 1.0
+    camera: { z1: 1.0, tw: 0.25, bpm: 108 }
+    layers:
+      - kind: particles
+        id: p_near_finale
+        depth: near
+        count: 76
+        size: [1.3, 3.2]
+        parallax: 0.085
+      - kind: widget
+        id: bg_finale
+        widget: bdBG
+        alias: 底纹网格
+        tags: [bg]
+        props: { cell: 34, sweep: 6.5 }
+        place: { x: 960, y: 540, anchor: center, w: 1700, h: 950 }
+      - kind: widget
+        id: ring
+        widget: bdRing
+        alias: 完成环
+        tags: [hud]
+        props: { rings: 4, period: 3.2 }
+        place: { x: 960, y: 520, anchor: center }
+      - kind: text
+        id: fin_text
+        alias: 终幕标题
+        content: "wire complete // 接线完成 // all frames pinned"
+        style: { size: 1.5, weight: 500, align: center }
+        place: { x: 960, y: 880, anchor: center }
+        type_period: 0.06
+    audio:
+      - { at: 0.4, sfx: piano_motif, gain: 0.85, bus: hits }
+
+asserts:
+  - { id: density-ok, metric: density, expect: ">= 0.9 %", severity: error }
+  - { id: frame-diff-ok, metric: frame_diff, expect: ">= 4 %", severity: error }
+  - { id: black-level-ok, metric: black_level, expect: "in 6..9", severity: warn }
+  - { id: edge-band-ok, metric: edge_band, expect: "<= 0.6", severity: warn }
+  - { id: cam-jitter-ok, metric: cam_jitter, expect: "<= 2 px", severity: error }
+  - { id: transition-spike-clean, metric: transition_spike, expect: "== 0", severity: warn }

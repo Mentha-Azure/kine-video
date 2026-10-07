@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.kine/
+generated/
+.venv/
+__pycache__/
+*.pyc
+.smoke/
+.DS_Store

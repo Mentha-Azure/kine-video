@@ -1,0 +1,53 @@
+# Kine fixture — 模糊寻址歧义（回归用例⑦：两个近义元素 → find AMBIGUOUS）
+# 用途：find "标题" 应命中 2 个候选（主标题/副标题）且分差 <0.2 → AMBIGUOUS（禁静默选择）
+schema: kine/1
+
+project:
+  id: ambiguous
+  title: Ambiguous Find Fixture
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 5.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: main, until: 5.0, ratio: 1.0 }
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+
+render:
+  surface: canvas
+  workers: 4
+
+scenes:
+  - id: s1
+    name: 歧义幕
+    dur: 5.0
+    rate: 1.0
+    camera: { z1: 1.0, tw: 0.3, bpm: 108 }
+    layers:
+      - kind: widget
+        id: title_main
+        widget: bdTitle
+        alias: 主标题
+        props: { text: "MAIN TITLE", size: 64 }
+        place: { x: 960, y: 430, anchor: center }
+      - kind: widget
+        id: title_sub
+        widget: bdTitle
+        alias: 副标题
+        props: { text: "sub title", size: 32 }
+        place: { x: 960, y: 620, anchor: center }
+
+asserts: []

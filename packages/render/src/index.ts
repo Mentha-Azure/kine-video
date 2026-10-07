@@ -1,0 +1,52 @@
+// @kine/render — 公共入口
+export {
+  findFfmpeg,
+  ffmpegRun,
+  ffmpegExec,
+  chunkEncodeArgs,
+  concatArgs,
+  remuxArgs,
+  muxArgs,
+  audioConvertArgs,
+  startChunkEncoder,
+  mediaInfo,
+  countVideoFrames,
+  extractFramePng,
+  extractAudioWav,
+  type EncoderProfile,
+  type FfmpegInfo,
+  type MediaInfo,
+} from './ffmpeg';
+export {
+  findBrowser,
+  openSession,
+  hostBundlePath,
+  withTimeout,
+  sleep,
+  staggerDelay,
+  determinismArgs,
+  type BrowserInfo,
+  type KineSession,
+  type ScanError,
+} from './browser';
+export { breakFrames, planChunks, chunkFileName, type ChunkRange } from './chunks';
+export { chunkKey, lookupChunk, chunkCachePath, atomicWriteFile, ensureDir, framePngPath, profileKey } from './cache';
+export {
+  renderProject,
+  renderRange,
+  renderPreview,
+  concatChunks,
+  concatMux,
+  capturePngs,
+  openRenderSession,
+  renderDefaults,
+  RenderFrameError,
+  type RenderCommonOptions,
+  type RenderProjectOptions,
+  type RangeRenderOptions,
+  type PreviewOptions,
+  type ChunkArtifact,
+  type RenderResult,
+  type RenderProgress,
+  type ShotCapture,
+} from './pipeline';

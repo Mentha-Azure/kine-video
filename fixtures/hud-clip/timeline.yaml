@@ -1,0 +1,46 @@
+# Kine fixture — z1=1.14 贴边 HUD（回归用例②：缩放把 HUD 推出画 → lint E-HUD-001 / check edge_band）
+# z1=1.14 时安全裁切带 = (z1-1)/2*W ≈ 134px；HUD 显式尺寸从 x=40 起排 → 落在裁切带内
+schema: kine/1
+
+project:
+  id: hud-clip
+  title: HUD Clip Fixture
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 2.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: main, until: 2.0, ratio: 1.0 }
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+
+render:
+  surface: canvas
+  workers: 4
+
+scenes:
+  - id: s1
+    name: 裁剪幕
+    dur: 2.0
+    camera: { z1: 1.14, tw: 0.3, bpm: 108 }   # ← 1.14 倍缩放，四边各裁 ~134px
+    layers:
+      - kind: widget
+        id: hud_edge
+        widget: bdTerminal
+        alias: 贴边终端
+        props: { size: 28, title: "EDGE", lines: 10 }
+        place: { x: 40, y: 40, w: 520, h: 300, anchor: tl }   # ← 40px 起排，落入裁切带 → E-HUD-001
+
+asserts: []

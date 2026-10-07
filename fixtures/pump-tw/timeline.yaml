@@ -1,0 +1,45 @@
+# Kine fixture — tw 超限震屏（回归用例③：抖动夸张 → lint E-CAM-001）
+# tw 是驱动震屏/暗角/扫描线的一维旋钮；直流上限 2.0（源项目实测 p99>2px 判 FAIL）
+schema: kine/1
+
+project:
+  id: pump-tw
+  title: Pump TW Fixture
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 2.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: main, until: 2.0, ratio: 1.0 }
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+
+render:
+  surface: canvas
+  workers: 4
+
+scenes:
+  - id: s1
+    name: 抖动幕
+    dur: 2.0
+    camera: { z1: 1.0, tw: 2.4, bpm: 108 }   # ← tw=2.4 > 2.0 → E-CAM-001
+    layers:
+      - kind: widget
+        id: w1
+        widget: bdTitle
+        props: { text: "PUMP", size: 60 }
+        place: { x: 960, y: 540, anchor: center }
+
+asserts: []

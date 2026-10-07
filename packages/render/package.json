@@ -1,0 +1,15 @@
+{
+  "name": "@kine/render",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@kine/dsl": "workspace:*",
+    "@kine/runtime": "workspace:*",
+    "@kine/widgets": "workspace:*",
+    "playwright-core": "^1.63.0",
+    "proper-lockfile": "^4.1.2"
+  }
+}

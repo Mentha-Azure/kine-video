@@ -1,0 +1,59 @@
+# Kine fixture — 双速 pace（回归用例⑧：断点分片 + 时间映射往返）
+# 用途：compile 级测试。成片 7.0s；seg a 0-4s @1.0，seg b 4-7s @1.5 → 渲染钟 4.0+4.5=8.5s
+# 期望：frames=420；break @frame 240 (t=4.0, T=4.0)；s2: T0=4.0→t0=4.0, T1=8.5→t1=7.0, frames [240,420)
+schema: kine/1
+
+project:
+  id: double-pace
+  title: Double Pace Fixture
+  version: v0.1
+  seed: 7
+
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 7.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1.0 }
+
+pace:
+  segments:
+    - { id: a, until: 4.0, ratio: 1.0 }
+    - { id: b, until: 7.0, ratio: 1.5 }
+
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+
+render:
+  surface: canvas
+  workers: 4
+
+scenes:
+  - id: s1
+    name: 常速段
+    dur: 4.0
+    rate: 1.0
+    camera: { z1: 1.0, tw: 0.3, bpm: 108 }
+    layers:
+      - kind: widget
+        id: w1
+        widget: bdTitle
+        props: { text: "SEG A", size: 56 }
+        place: { x: 960, y: 540, anchor: center }
+  - id: s2
+    name: 加速段
+    dur: 4.5
+    rate: 1.0
+    camera: { z1: 1.0, tw: 0.3, bpm: 108 }
+    layers:
+      - kind: widget
+        id: w2
+        widget: bdTitle
+        props: { text: "SEG B", size: 56 }
+        place: { x: 960, y: 540, anchor: center }
+
+asserts: []
