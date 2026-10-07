@@ -9,12 +9,28 @@ import { fail, ok, type ToolResult } from '../types';
 import { ensureMix } from './util';
 
 export interface RenderOptions {
-  range?: [number, number];
+  /** 区间 a:b（组件默认帧；'s' 后缀=秒，可混用），如 "0:300"、"0:5s" */
+  range?: string;
   workers?: number;
   noCache?: boolean;
   keepFrames?: boolean;
   version?: string;
   audio?: boolean;
+  /** 编码档位 preset 覆盖（ultrafast…veryslow；缓存按档位隔离） */
+  preset?: string;
+}
+
+const PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'] as const;
+
+/** 解析区间字符串：a:b，组件默认帧；'s' 后缀=秒（×fps），'f' 后缀=帧（显式） */
+function parseRange(raw: string, fps: number): { f0: number; f1: number; label: string } | { error: string } {
+  const m = /^\s*([\d.]+)([sf]?)\s*:\s*([\d.]+)([sf]?)\s*$/.exec(raw);
+  if (!m) return { error: `无法解析区间 "${raw}"（格式 a:b；秒用后缀如 0:5s）` };
+  const conv = (v: string, u: string) => (u === 's' ? Math.round(Number(v) * fps) : Math.round(Number(v)));
+  const f0 = conv(m[1]!, m[2]!);
+  const f1 = conv(m[3]!, m[4]!);
+  const label = m[2] === 's' || m[4] === 's' ? `由秒换算 @${fps}fps` : '按帧';
+  return { f0, f1, label };
 }
 
 export async function toolRender(ctx: AgentContext, opts: RenderOptions = {}): Promise<ToolResult> {
@@ -24,12 +40,33 @@ export async function toolRender(ctx: AgentContext, opts: RenderOptions = {}): P
   const map = ir.time.map;
   const audioOn = opts.audio !== false;
   const mixFile = audioOn ? await ensureMix(ctx, ir) : null;
+  let presetNote = '';
+  if (opts.preset !== undefined) {
+    if (!(PRESETS as readonly string[]).includes(opts.preset)) {
+      return fail('render', 'E-RENDER-006', `未知编码档位 preset "${opts.preset}"`, {
+        facts: [`可用档位：${PRESETS.join(' / ')}`],
+        hints: ['快速迭代推荐 ultrafast 或 veryfast（成片请用默认档）'],
+      });
+    }
+    defaults.profile = { ...defaults.profile, preset: opts.preset };
+    presetNote = `编码档位：preset ${opts.preset}（缓存按档位隔离，改动档位会重新渲染）`;
+  }
 
   // ---- 区间渲染：走成品形态预览路径（成片分辨率 + 音轨切片），不写版本目录不改终版指针
   if (opts.range) {
-    const [f0, f1] = opts.range;
+    const parsed = parseRange(opts.range, map.fps);
+    if ('error' in parsed) {
+      return fail('render', 'E-RENDER-005', parsed.error, {
+        facts: [`本片 ${map.frames} 帧 @${map.fps}fps（${map.duration}s）`],
+        hints: ['示例：--range 0:300（帧）｜--range 0:5s（秒）'],
+      });
+    }
+    const { f0, f1 } = parsed;
     if (!(f0 >= 0 && f1 > f0 && f1 <= map.frames)) {
-      return fail('render', 'E-RENDER-002', `--range ${f0}:${f1} 超出帧范围 [0, ${map.frames})`);
+      return fail('render', 'E-RENDER-002', `--range ${opts.range} → ${f0}:${f1} 帧超出范围 [0, ${map.frames})`, {
+        facts: [`本片 ${map.frames} 帧 @${map.fps}fps（${map.duration}s）`],
+        hints: ['帧号区间为 [f0, f1)；示例：--range 0:300 或 --range 0:5s'],
+      });
     }
     const t0 = pointAtFrame(map, f0).t;
     const t1 = pointAtFrame(map, Math.min(f1, map.frames - 1)).t;
@@ -60,8 +97,9 @@ export async function toolRender(ctx: AgentContext, opts: RenderOptions = {}): P
         verdict: 'PASS',
         facts: [
           `区间产物：${r.file}（${f1 - f0} 帧，${r.artifact.cached ? '缓存命中' : `${r.artifact.ms}ms`}）`,
+          `区间解读：${parsed.label} → 帧 ${f0}..${f1} ≈ t ${t0.toFixed(2)}s → ${t1.toFixed(2)}s`,
           info ? `媒体信息：${info.width}x${info.height}@${info.fps}` : '',
-          `对应成片秒 t=${t0.toFixed(2)}s → ${t1.toFixed(2)}s`,
+          presetNote,
         ].filter(Boolean),
         hints: ['区间产物用于快速审查，不写版本目录、不改终版指针'],
       });
@@ -120,7 +158,8 @@ export async function toolRender(ctx: AgentContext, opts: RenderOptions = {}): P
       `出片：${finalFile}（${version}）`,
       `帧数 ${res.framesTotal}｜渲染 ${res.framesRendered}｜缓存命中 ${res.framesCached}｜用时 ${(res.elapsedMs / 1000).toFixed(1)}s`,
       `上一版：${prev?.version ?? '（首版）'}（不改名不覆盖）`,
-    ];
+      presetNote,
+    ].filter(Boolean);
     return ok('render', {
       version,
       file: finalFile,

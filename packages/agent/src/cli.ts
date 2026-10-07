@@ -3,8 +3,9 @@ import process from 'node:process';
 import path from 'node:path';
 import { AgentContext } from './context';
 import { TOOLS, findTool, toolNames } from './tools/index';
-import type { ToolResult } from './types';
+import { fail, type ToolResult } from './types';
 import { runMcpServer } from './mcp';
+import { ResolveError, resolveTargetDir, type ResolvedDir } from './resolve';
 
 // ── 极简参数解析：positionals + --flags ──────────────────────────────
 interface Parsed {
@@ -67,6 +68,8 @@ function buildArgs(tool: string, p: Parsed): unknown {
   switch (tool) {
     case 'init':
       return { dir: p.pos[0] ?? '.', template: flagStr(p, 'template') ?? 'mv-mini', force: flagBool(p, 'force') };
+    case 'projects':
+      return { forget: flagStr(p, 'forget') };
     case 'info':
     case 'versions':
       return {};
@@ -105,7 +108,8 @@ function buildArgs(tool: string, p: Parsed): unknown {
       return { at: flagNum(p, 'at'), dur: flagNum(p, 'dur'), audio: !flagBool(p, 'no-audio'), keepFrames: flagBool(p, 'keep-frames') };
     case 'render':
       return {
-        range: rangeArg(p),
+        range: flagStr(p, 'range'),
+        preset: flagStr(p, 'preset'),
         workers: flagNum(p, 'workers'),
         noCache: flagBool(p, 'no-cache'),
         keepFrames: flagBool(p, 'keep-frames'),
@@ -164,7 +168,13 @@ function printHelp(): void {
   lines.push('', '示例：');
   lines.push('  kine map --t 12.5');
   lines.push('  kine edit "set scenes[code].camera.tw=0.5" --tx --quote "代码幕太静了" --preview');
+  lines.push('  kine render --range 0:300            # 帧区间（默认按帧）');
+  lines.push('  kine render --range 0:5s --preset ultrafast   # 秒区间 + 快速档迭代');
   lines.push('  kine render --workers 4');
+  lines.push('', '工程定位：');
+  lines.push('  · 不带 --dir 时按顺序解析：当前目录向上找 timeline.yaml → 向下扫描（深度 3）自动发现');
+  lines.push('  · 多个候选时取最近使用的工程（kine projects 查看登记表）；全部找不到才报错');
+  lines.push('  · 显式 --dir <工程目录> 最精确；kine projects --forget <片段> 清理登记');
   lines.push('', 'edit 说明：');
   lines.push('  · patch 表达式：set <路径>=<值> / del <路径>；路径支持 scenes[id].layers[id].props.size');
   lines.push('  · patch 文件：--file <yaml>，格式 [{path, value}] 或 [{path, del: true}]（或 map 简写）');
@@ -183,7 +193,15 @@ export async function main(argv: string[]): Promise<number> {
   if (maybeTool === 'mcp') {
     const mcpFlag = argv.includes('--dir') ? flagStr(parseArgs(rest), 'dir') : undefined;
     const mcpBase = process.env.KINE_CWD ?? process.cwd();
-    const mcpDir = mcpFlag ? path.resolve(mcpBase, mcpFlag) : mcpBase;
+    let mcpDir = mcpFlag ? path.resolve(mcpBase, mcpFlag) : mcpBase;
+    if (mcpFlag === undefined) {
+      // 启动时尽力智能发现（祖先→向下扫描→登记表）；失败保留 base，由每次工具调用再试并给出明确报错
+      try {
+        mcpDir = resolveTargetDir(undefined, { explicit: false, base: mcpBase }).dir;
+      } catch {
+        mcpDir = mcpBase;
+      }
+    }
     await runMcpServer(mcpDir);
     // stdio 服务器：main 永不 resolve，避免外层 process.exit 杀掉服务进程；
     // stdin 关闭（客户端 EOF）后事件循环清空，进程自然退出。
@@ -199,11 +217,29 @@ export async function main(argv: string[]): Promise<number> {
   const p = parseArgs(rest);
   const dirFlag = flagStr(p, 'dir');
   const userBase = process.env.KINE_CWD ?? process.cwd();
-  const dirRaw = dirFlag ? path.resolve(userBase, dirFlag) : userBase;
   const json = flagBool(p, 'json');
   const quiet = flagBool(p, 'quiet');
+
+  // 工程目录解析（init/projects 无需工程上下文）：显式 --dir 仅做祖先查找；缺省走智能发现（祖先→向下扫描→登记表）
+  let resolvedDir: ResolvedDir;
+  if (def.name === 'init' || def.name === 'projects') {
+    resolvedDir = { dir: dirFlag ? path.resolve(userBase, dirFlag) : userBase, explicit: dirFlag !== undefined };
+  } else {
+    try {
+      resolvedDir = resolveTargetDir(dirFlag, { explicit: dirFlag !== undefined, base: userBase });
+    } catch (e) {
+      const re = e as ResolveError;
+      const r = fail(def.name, typeof re.code === 'string' ? re.code : 'E-PROJ-001', re.message ?? String(e), {
+        facts: re.facts ?? [],
+        hints: re.hints ?? [],
+      });
+      printResult(def.name, r, json);
+      return 1;
+    }
+  }
+
   const ctx = new AgentContext({
-    dir: def.name === 'init' ? dirRaw : dirRaw,
+    dir: resolvedDir.dir,
     actor: 'cli',
     quiet: quiet || json,
     progress: (ev) => {
@@ -215,12 +251,18 @@ export async function main(argv: string[]): Promise<number> {
   try {
     r = await def.handler(ctx, buildArgs(def.name, p) as never);
   } catch (e) {
-    const err = e as Error;
+    const err = e as { code?: string; message?: string; hints?: string[]; facts?: string[] };
     r = {
-      ok: false, tool: def.name, data: null, facts: [],
-      error: { code: 'E-CLI-001', message: err.message, hints: ['这是未捕获的异常，请附带命令上下文反馈'] },
+      ok: false, tool: def.name, data: null, facts: err.facts ?? [],
+      error: {
+        code: typeof err.code === 'string' && /^E-/.test(err.code) ? err.code : 'E-CLI-001',
+        message: err.message ?? String(e),
+        hints: err.hints ?? ['这是未捕获的异常，请附带命令上下文反馈'],
+      },
     };
   }
+
+  if (resolvedDir.note) r = { ...r, facts: [resolvedDir.note, ...(r.facts ?? [])] };
   printResult(def.name, r, json);
   if (r.ok && r.verdict !== 'FAIL') return 0;
   return 1;

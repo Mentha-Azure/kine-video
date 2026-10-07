@@ -99,7 +99,7 @@ try {
   const info = await callTool('kine.info', {});
   const infoData = info.data ?? {};
   assert(info.ok === true, `无 dir 参数 -> 绑定启动目录（specHash8=${String(infoData['specHash8'])})`);
-  assert(String(infoData['specHash8'] ?? '').startsWith('c017055d'), '默认工程 = examples/mv-mini（specHash8=c017055d）');
+  assert(String(infoData['specHash8'] ?? '').startsWith('cfc54762'), '默认工程 = examples/mv-mini（specHash8=cfc54762）');
 
   // ② dir 覆盖：应切到 fixtures/double-pace（t=5.5 → frame 330 场景 s2）
   const map = await callTool('kine.map', { t: 5.5, dir: doublePace });

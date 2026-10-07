@@ -23,7 +23,7 @@ npx kine init demo --template mv-mini
 # 2) 三层检查的项目级入口：DSL schema + purity lint（+ 运行时全轴扫描，去掉 --syntax-only 即全开）
 npx kine audit --dir demo --syntax-only
 
-# 3) 渲染一小段审查（--range 为帧范围）
+# 3) 渲染一小段审查（--range 默认帧；秒用后缀：0:5s。迭代频繁可加 --preset ultrafast）
 npx kine render --range 0:300 --dir demo
 
 # 4) 全片渲染 + 终检
@@ -36,7 +36,7 @@ npx kine preview --at 12 --dur 4 --dir demo
 
 > `npx kine` 通过 workspace bin（`packages/agent/bin/kine.mjs`）入口运行；也可等价使用
 > `node packages/agent/bin/kine.mjs <cmd>` 或 `npx tsx packages/agent/src/cli.ts <cmd>`。
-> 所有命令未指定 `--dir` 时以当前目录为工程目录。
+> 所有命令未指定 `--dir` 时的定位顺序：① 启动目录向上查找 `timeline.yaml`；② 向下扫描（深度 3）唯一命中即用；③ 多个命中取**最近登记**的工程（返回 facts 会注明自动定位结果）；④ 全无则报 `E-PROJ-*` 并列出候选。`kine projects` 可查看/清理登记。
 
 ---
 
@@ -101,7 +101,7 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 | `baseline` | 保存/查看基线（指标 + 黄金帧 stateHash + 音频特征） | `kine baseline --save` |
 | `diff` | 两个版本/基线的三联 diff（语义/指标/关键帧） | `kine diff v0.2 v0.3` |
 | `preview` | 成品形态短预览（法定形态：3–5s、成片分辨率、带音轨） | `kine preview --at 12 --dur 4` |
-| `render` | 渲染：全片（默认）或 `--range f0:f1` 帧段；`--workers/--no-cache` | `kine render --workers 4` |
+| `render` | 渲染：全片（默认）或 `--range a:b`（默认帧，`s` 后缀为秒）；`--preset` 编码档位；`--workers/--no-cache` | `kine render --range 0:5s --preset ultrafast` |
 | `verify` | 成片终检：帧数/时长/音轨/接缝/黄金帧 + 写报告 | `kine verify --version v0.3` |
 | `changelog` | 事务历史（用户原话 + patch + impact + 预览） | `kine changelog --since 2h` |
 | `rollback` | 回滚某事务（备份优先，写新条目） | `kine rollback tx_20261007_001` |
@@ -196,15 +196,15 @@ demo/
 
 | 项目 | 状态 |
 | --- | --- |
-| `npx vitest run` | 9 文件 / 34 用例全绿（含 kine-py 协议行净化与静音窗回归） |
+| `npx vitest run` | 11 文件 / 45 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归） |
 | 6 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码） |
 | M0 五命令验收（mv-mini） | `init`（绝对/相对路径 × blank/mv-mini 模板）· `audit`（语法 0/0、purity 0、运行时全轴扫描 0 错误）· `render`（v0.4，1440 帧全缓存命中，6.8s）· `verify`（帧数/时长/音频/抽检全过，tail-clean 为已解释 WARN）· `preview --at 12 --dur 4`（含音轨成品形态）——全 PASS |
 | MCP 冒烟 | initialize / tools(22) / map / probe / resources 全通过 |
 | 字节级复现 | `tools/repro-check.ts` 双跑 120 帧 sha256 逐字节一致（534f795a…） |
 | 工程身份确定性 | specHash 位置无关（拷贝工程/换目录哈希一致）；音频-only 改动不失效帧缓存（visualHash 解耦实证） |
 
-已知限制：`verify` 的 tail-clean 若 SFX 延至片尾会给 WARN（属设计内、需按 L-AUD-002 解释）；
-`render --range` 采用帧语义；M7 只读预览 UI 未实现（非目标优先）。
+已知限制：`verify` 的 tail-clean 对“SFX 延至片尾/收尾偏响”的工程会给 WARN（属设计内、按 L-AUD-002 解释；可用 `audio.tail_fade` 调整——mv-mini 模板已用 `1.0` 使 fresh verify 0 WARN）；
+`render --range` 默认帧语义（秒用 `0:5s` 后缀）；M7 只读预览 UI 未实现（非目标优先）。
 
 ## 音频：SFX 参数表与 tail_fade
 
@@ -220,8 +220,8 @@ demo/
 | `drone` | `freq` · `dur` |
 | `glitch` | `rate` · `blue_freq` · `dur` |
 
-- `audio.tail_fade`（0.1–3s，默认 0.4）：SFX 总线末段余弦淡出时长；改动只重建音频缓存，帧缓存不受影响。
-- 合成器版本 `kine-synth/2`（piano_motif 的 `gain` 旋钮已生效；此前为死旋钮）。
+- `audio.tail_fade`（0.1–3s，默认 0.4）：SFX 总线末段余弦淡出时长；改动只重建音频缓存，帧缓存不受影响。mv-mini 模板用 `1.0`，末 0.2s 峰值实测 -35.9 dB。
+- 合成器版本 `kine-synth/2`（piano_motif 的 `gain` 旋钮已生效；`keyboard` 用 `count` 控制点击数——写 `clicks` 会在 audit 报 `W-SYNTH-001`）。
 
 **MCP 常驻提示**：MCP 服务器进程常驻，修改 Kine 源码后需重启服务器（OpenCode 中重启服务或重开会话）才会加载新代码。
 

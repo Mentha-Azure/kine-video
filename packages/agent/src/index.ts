@@ -1,8 +1,10 @@
 // @kine/agent — Agent 工具层入口（CLI 与 MCP 同源；测试与外部集成从这里导入）
 export * from './types';
 export * from './context';
+export * from './resolve';
 export * from './tools/index';
 export { toolInit, toolInfo, toolDoctor } from './tools/project';
+export { toolProjects } from './tools/projects';
 export { toolCompile, toolMap, toolProbe, toolFind, toolExplain } from './tools/timeline';
 export { toolImpact } from './tools/impact';
 export { toolEdit } from './tools/edit';

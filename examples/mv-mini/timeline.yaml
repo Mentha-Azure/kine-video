@@ -45,6 +45,7 @@ render:
 
 audio:
   music: { file: assets/song.wav, gain: 0.90, fade_out: { at: 20.4, dur: 0.6, shape: cosine }, cut_from: 21.0 }
+  tail_fade: 1.0
   sfx:
     synth: offline
     buses:
@@ -52,7 +53,7 @@ audio:
       - { id: hits, gain: 1.0 }
     events:
       - { at: 0.40, clock: output, sfx: rain, gain: 0.60, bus: bed }
-      - { at: 1.20, clock: output, sfx: keyboard, gain: 0.80, bus: hits, params: { period: 0.14, clicks: 26 } }
+      - { at: 1.20, clock: output, sfx: keyboard, gain: 0.80, bus: hits, params: { period: 0.14, count: 26 } }
       - { at: 5.20, clock: output, sfx: heartbreak, gain: 0.90, bus: hits }
       - { at: 10.60, clock: output, sfx: glitch, gain: 0.72, bus: hits }
       - { at: 18.40, clock: output, sfx: heartbreak, gain: 0.90, bus: hits }

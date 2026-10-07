@@ -5,8 +5,8 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 
 ## 接入方式
 
-- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 22 个）。
-  - 默认工程目录 = 服务器启动目录（自动向上 12 层查找 `timeline.yaml`）；
+- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 23 个）。
+  - 不传 `dir` 的工程定位顺序：① 启动目录向上查找 `timeline.yaml`；② 向下扫描（深度 3）唯一命中即用；③ 多个命中取**最近登记**的工程（返回 facts 会注明）；④ 失败报 `E-PROJ-*` 并列候选（`kine.projects` 可查看/清理登记）。
   - 任何工具都可传参数 `dir="<工程目录>"` 覆盖默认目录（`kine.init` 除外——它的 `dir` 是"目标工程目录"语义）；
   - 资源：`kine://project/info`、`kine://map`、`kine://baseline`。
   - 注意：MCP 服务器进程常驻；**修改 Kine 源码后需重启服务器**才会加载新代码。
@@ -44,7 +44,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 量指标 | `kine measure density --scene finale` |
 | 带期望断言 | `kine measure frame_diff --expect ">= 4 %"` |
 | 预览 | `kine preview --at 12 --dur 4` |
-| 出片/终检 | `kine render [--range 0:300]` / `kine verify` |
+| 出片/终检 | `kine render [--range 0:300 或 0:5s] [--preset ultrafast]` / `kine verify` |
 | 变更历史/回滚 | `kine changelog --since 1d` / `kine rollback tx_20261007_001` |
 
 环境：ffmpeg 自动发现（`KINE_FFMPEG` 可覆盖）；浏览器用系统 Edge（`KINE_BROWSER` 可覆盖）；kine-py 走 `py/kine-py/.venv`（`KINE_PYTHON` 可覆盖）。
@@ -63,4 +63,4 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | drone | freq · dur |
 | glitch | rate · blue_freq · dur |
 
-`audio.tail_fade`（0.1–3，默认 0.4）= SFX 末段淡出时长（改它只重建音频缓存，帧不受影响）。
+`audio.tail_fade`（0.1–3，默认 0.4）= SFX 末段淡出时长（改它只重建音频缓存，帧不受影响）。收尾偏响的工程可调大（mv-mini 用 1.0 使尾检 0 WARN）。

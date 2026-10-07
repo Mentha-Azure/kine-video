@@ -13,6 +13,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { latestBaseline } from '@kine/store';
 import { AgentContext } from './context';
+import { ResolveError, resolveTargetDir } from './resolve';
 import { TOOLS, findTool } from './tools';
 import type { ToolResult } from './types';
 
@@ -135,12 +136,13 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
   render: {
     type: 'object',
     properties: {
-      range: str('帧区间 [f0:f1]（缺省全片）'),
+      range: str('区间 a:b（默认帧；秒用后缀如 0:5s，可混用）；缺省全片'),
       workers: num('并行 worker 数（默认 render.workers）'),
       noCache: bool('忽略缓存'),
       keepFrames: bool('保留中间帧'),
       version: str('输出版本名（如 v0.2）'),
       audio: bool('混流音轨（默认 true）'),
+      preset: str('编码档位 preset（ultrafast…veryslow；默认取规格 slow；缓存按档位隔离）'),
     },
     additionalProperties: false,
   },
@@ -167,17 +169,30 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
   },
   versions: { type: 'object', properties: {}, additionalProperties: false },
   doctor: { type: 'object', properties: { fix: bool('自动修复（重编译 IR/清理索引）') }, additionalProperties: false },
+  projects: { type: 'object', properties: { forget: str('移除登记（完整路径或路径片段）') }, additionalProperties: false },
 };
 
-// 除 init 外（init 的 dir 是「目标工程目录」语义），每个工具都接受可选 dir 覆盖 server 默认工程目录：
+// 除 init / projects 外（它们的 dir 语义特殊），每个工具都接受可选 dir 覆盖 server 默认工程目录：
 // 同一个 kine server 实例即可服务多个工程（配套 CallTool 内的 override 逻辑）。
 for (const [key, schema] of Object.entries(ARG_SCHEMAS)) {
-  if (key === 'init') continue;
+  if (key === 'init' || key === 'projects') continue;
   schema.properties.dir = str('工程目录（可选，覆盖服务器默认工程目录；绝对路径或相对 cwd）');
 }
 
 function toText(res: ToolResult): string {
   return JSON.stringify(res, null, 2);
+}
+
+// dir 解析结果短期记忆（5s）：避免每次工具调用都做目录扫描；显式/默认分开缓存
+const dirMemo = new Map<string, { t: number; dir: string; note?: string }>();
+function resolveDirMemo(input: string, explicit: boolean): { dir: string; note?: string } {
+  const key = `${explicit ? 'E' : 'D'}|${input}`;
+  const hit = dirMemo.get(key);
+  if (hit && Date.now() - hit.t < 5000) return hit;
+  const r = resolveTargetDir(input, { explicit });
+  const val = { t: Date.now(), dir: r.dir, note: r.note };
+  dirMemo.set(key, val);
+  return val;
 }
 
 export async function runMcpServer(dir: string): Promise<void> {
@@ -201,28 +216,33 @@ export async function runMcpServer(dir: string): Promise<void> {
     if (!def) {
       return { content: [{ type: 'text', text: `未知工具：${req.params.name}（可用：kine.${TOOLS.map((t) => t.name).join(', kine.')}）` }], isError: true };
     }
-    // 每次调用可传 dir 覆盖 server 默认工程目录（同一 server 服务多个工程）；init 例外（其 dir 是「目标目录」语义）
+    // 每次调用可传 dir 覆盖 server 默认工程目录（同一 server 服务多个工程）；init/projects 例外（其 dir 语义特殊）
     const rawArgs = { ...((req.params.arguments ?? {}) as Record<string, unknown>) };
-    const dirOverride =
-      name !== 'init' && typeof rawArgs.dir === 'string' && rawArgs.dir.trim() !== ''
-        ? String(rawArgs.dir)
-        : undefined;
-    if (dirOverride !== undefined) delete rawArgs.dir;
-    // 相对路径按用户 cwd 解析（bin launcher 以仓库根为进程 cwd，KINE_CWD 承载用户原始 cwd）
-    let callDir = dir;
-    if (dirOverride !== undefined) {
-      const relBase = process.env.KINE_CWD ?? process.cwd();
-      callDir = path.isAbsolute(dirOverride) ? dirOverride : path.resolve(relBase, dirOverride);
-      if (!existsSync(callDir)) {
-        return {
-          content: [{ type: 'text', text: `未知工程目录：${dirOverride}（解析为 ${callDir}，目录不存在）` }],
-          isError: true,
+    const hasDirOverride =
+      name !== 'init' && name !== 'projects' && typeof rawArgs.dir === 'string' && rawArgs.dir.trim() !== '';
+    const dirOverride = hasDirOverride ? String(rawArgs.dir) : undefined;
+    if (hasDirOverride) delete rawArgs.dir;
+    // dir 解析：显式覆盖→仅祖先查找（相对 KINE_CWD）；无覆盖→沿用 server 启动目录做智能发现
+    let resolvedDir: { dir: string; note?: string } | undefined;
+    if (name !== 'init' && name !== 'projects') {
+      try {
+        resolvedDir = dirOverride !== undefined ? resolveDirMemo(dirOverride, true) : resolveDirMemo(dir, false);
+      } catch (e) {
+        const re = e as ResolveError;
+        const payload = {
+          ok: false,
+          tool: name,
+          error: { code: re.code ?? 'E-PROJ-001', message: re.message ?? String(e) },
+          facts: re.facts ?? [],
+          hints: re.hints ?? [],
         };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
       }
     }
+    const callDir = resolvedDir?.dir ?? dir;
     const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta?.progressToken;
     const ctx = progressToken === undefined
-      ? (dirOverride === undefined ? baseCtx : new AgentContext({ dir: callDir, actor: 'mcp', quiet: true }))
+      ? (resolvedDir === undefined ? baseCtx : new AgentContext({ dir: callDir, actor: 'mcp', quiet: true }))
       : new AgentContext({
           dir: callDir,
           actor: 'mcp',
@@ -242,7 +262,10 @@ export async function runMcpServer(dir: string): Promise<void> {
           },
         });
     try {
-      const res = await def.handler(ctx, rawArgs);
+      let res = await def.handler(ctx, rawArgs);
+      if (resolvedDir?.note && Array.isArray(res.facts)) {
+        res = { ...res, facts: [resolvedDir.note, ...res.facts] };
+      }
       if (progressToken !== undefined) {
         void server
           .notification({ method: 'notifications/progress', params: { progressToken, progress: 100, total: 100, message: res.ok ? 'done' : 'failed' } })

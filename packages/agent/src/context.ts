@@ -6,6 +6,7 @@ import {
 import {
   openProject, writeIR, logToolCall, type ProjectStore, type ToolLogEntry,
 } from '@kine/store';
+import { registerProject } from './resolve';
 
 export interface CompileResult {
   loaded: LoadedProject;
@@ -40,7 +41,10 @@ export class AgentContext {
   }
 
   get store(): ProjectStore {
-    if (!this._store) this._store = openProject(this.dir);
+    if (!this._store) {
+      this._store = openProject(this.dir);
+      registerProject(this._store.root); // 登记全局工程表（默认 dir 解析用）
+    }
     return this._store;
   }
 
