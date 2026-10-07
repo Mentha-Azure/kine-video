@@ -225,6 +225,14 @@ export function mediaInfo(file: string): MediaInfo {
   const duration = dur ? Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]) + Number(`0.${dur[4]}`) : null;
   const vid = /Video:[^\n]*?,\s*(\d+)x(\d+)/.exec(s);
   const fpsM = /,\s*([\d.]+)\s*fps/.exec(s);
+  // raw 只保留探针有效段（Input/Duration/Stream/Metadata），去掉版本横幅与
+  // "At least one output file must be specified" 噪声（无 ffprobe 时的探测方式决定）
+  const inputIdx = s.indexOf('Input #');
+  const raw = (inputIdx >= 0 ? s.slice(inputIdx) : s)
+    .split('\n')
+    .filter((l) => !/At least one output file/.test(l))
+    .join('\n')
+    .trim();
   return {
     duration,
     fps: fpsM ? Number(fpsM[1]) : null,
@@ -232,7 +240,7 @@ export function mediaInfo(file: string): MediaInfo {
     height: vid ? Number(vid[2]) : null,
     hasAudio: /Stream #\d+:\d+.*: Audio:/.test(s),
     hasVideo: /Stream #\d+:\d+.*: Video:/.test(s),
-    raw: s,
+    raw,
   };
 }
 

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { AgentContext } from '../context';
 import { ok, fail, type ToolResult } from '../types';
 import {
-  projectLayout, ensureLayout, hasProject, doctor, listVersions, readLatest, kineRepoRoot,
+  projectLayout, ensureLayout, hasProject, doctor, listVersions, readLatest, kineRepoRoot, versionVideoFile,
 } from '@kine/store';
 
 const TEMPLATES = ['mv-mini', 'blank'] as const;
@@ -176,8 +176,8 @@ export async function toolInfo(ctx: AgentContext): Promise<ToolResult<InfoResult
   if (!hasProject(ctx.dir)) return fail(tool, 'E-PROJ-001', `不是 Kine 工程目录：${ctx.dir}`);
   const all = [...issues, ...lintIssues];
   const versions = listVersions(ctx.store.layout.outDir).map((v) => {
-    const mp4 = v.files.find((f) => f.endsWith('.mp4'));
-    return { version: v.version, file: mp4 ? path.relative(ctx.store.root, mp4) : undefined };
+    const vf = versionVideoFile(v);
+    return { version: v.version, file: vf ? path.relative(ctx.store.root, vf) : undefined };
   });
   const latest = readLatest(ctx.store.layout.outDir);
   const widgets = new Set<string>();
@@ -221,7 +221,7 @@ export async function toolInfo(ctx: AgentContext): Promise<ToolResult<InfoResult
     facts: [
       `工程 ${data.id}「${data.title}」v${data.version.replace(/^v/, '')}，${data.output.width}x${data.output.height}@${data.output.fps}，成片 ${data.output.duration}s（${data.output.frames} 帧）`,
       `specHash ${data.specHash8}；幕数 ${data.scenes.length}；pace 段 ${data.pace.length}`,
-      `音乐：${data.audio.musicFile ?? '无'}${data.audio.musicExists ? '' : '（文件缺失！）'}；sfx 事件 ${data.audio.sfxEvents}`,
+      `音乐：${data.audio.musicFile ? `${data.audio.musicFile}${data.audio.musicExists ? '' : '（文件缺失！）'}` : '无'}；sfx 事件 ${data.audio.sfxEvents}`,
       `已发布版本 ${data.versions.length} 个${data.latest ? `（最新 ${data.latest}）` : ''}`,
       ...(data.issueCount.errors > 0 ? [`有 ${data.issueCount.errors} 个 error 级问题，先跑 audit`] : []),
     ],

@@ -31,10 +31,20 @@ export function listVersions(outDir: string): VersionInfo[] {
       version: name,
       dir,
       createdAt: fs.statSync(dir).birthtime.toISOString(),
-      files: fs.readdirSync(dir),
+      files: fs.readdirSync(dir).sort(),
     });
   }
   return out.sort((a, b) => cmpVersion(a.version, b.version));
+}
+
+/** 版本主产物 mp4：优先 <dir>/<version>.mp4（交付命名），其次 video.mp4，最后任意 *.mp4；返回绝对路径 */
+export function versionVideoFile(v: VersionInfo): string | undefined {
+  const named = path.join(v.dir, `${v.version}.mp4`);
+  if (fs.existsSync(named)) return named;
+  const video = path.join(v.dir, 'video.mp4');
+  if (fs.existsSync(video)) return video;
+  const any = v.files.find((f) => f.endsWith('.mp4'));
+  return any ? path.join(v.dir, any) : undefined;
 }
 
 export function cmpVersion(a: string, b: string): number {

@@ -137,6 +137,9 @@ MCP 服务器名 `kine`，工具名与 CLI 一致（`kine.map`、`kine.measure`�
 - **字节级复现验收**：`npx tsx tools/repro-check.ts examples/mv-mini/timeline.yaml 0:120`
   同一工程两次渲染（`--no-cache`）产物逐字节一致。
 - **分片**：边界只落 pace 断点与幕边界；4 worker 与单 worker 产物一致（同 specHash）。
+- **跨版本哈希标记**：`HASH_SCHEME`（IR 规范形式版本，`kine-hash/1`）与 `RENDER_VERSION`（渲染像素行为版本，`kine-render/1`）显式进入哈希输入。
+  源码升级导致标记 bump 时 specHash/visualHash 会变化、首次 render 可能全量重渲，属**预期且可解释**的行为；
+  维护者改变 IR 编译形式或渲染像素输出时**必须**同步 bump 对应常量并在此记录，用户可凭标记判断“是升级导致还是工程被改”。
 
 ### 改片标准工作流
 
