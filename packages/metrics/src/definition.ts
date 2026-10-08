@@ -57,7 +57,7 @@ export const METRICS: Record<string, MetricDef> = {
   },
   transition_spike: {
     name: 'transition_spike', unit: 'count', direction: 'zero', dense: true,
-    description: '转场孤立跳变：本帧差 > 邻域均值×2.2 的命中数（期望 0）。',
+    description: '转场孤立跳变：本帧差 > 邻域均值×2.2 的命中数（期望 0）；设计内边界（幕头装置/镜头转场/硬切瞬间）自动豁免。',
   },
 };
 

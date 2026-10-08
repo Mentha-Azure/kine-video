@@ -1,0 +1,46 @@
+# short-transition —— 短转场/硬切豁免验证工程（回归用例：内部镜头切换点不应误判为孤立跳变）
+schema: kine/1
+project:
+  id: short-transition
+  title: 短转场豁免验证
+  version: v0.1
+  seed: 7
+output:
+  width: 1920
+  height: 1080
+  fps: 60
+  duration: 4.0
+pace:
+  segments:
+    - { id: main, until: 4.0, ratio: 1.0 }
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+render:
+  surface: canvas
+  workers: 4
+scenes:
+  - id: s1
+    name: 短镜头幕
+    dur: 4.0
+    camera: { z1: 1.0, tw: 0.3, bpm: 100 }
+    layers:
+      - kind: particles
+        id: p_far
+        depth: far
+        count: 60
+        size: [1.2, 2.8]
+      - kind: widget
+        id: term
+        widget: bdTerminal
+        props: { size: 30, title: 'KINE://XF', lines: 12 }
+        place: { x: 960, y: 540, w: 1100, h: 620, anchor: center }
+    shots:
+      - { dur: 1.2 }
+      - { dur: 0.6, transition: { kind: whip_h } }
+      - { dur: 0.9 }
+      - { dur: 1.3, transition: { kind: wipe_redbar } }
+    asserts: []
+asserts: []

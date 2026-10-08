@@ -1,6 +1,6 @@
 // 指标执行器：scope 解析 → 帧采样 → 调 kine-py/解析复算 → MetricResult；断言引擎 runAsserts
 import type { KineIR, AssertPlanEntry } from '@kine/dsl';
-import { pointAt, sceneAtTByTime } from '@kine/dsl/time';
+import { pointAt, sceneAtTByTime, TtoT } from '@kine/dsl/time';
 import { pyDensity, pyFrameDiff, pyEdgeBand, pyBlackLevel, pyTransitionSpike } from './pixel';
 import { computeCamJitter } from './camera';
 import { audioStatsOf, windowLevelsOf, beatsOf, computeBeatDelta, type AudioStatsData, type WindowLevel } from './audio';
@@ -272,22 +272,52 @@ async function runCamJitter(ir: KineIR, scope: MetricScope | null, _inputs: Metr
   };
 }
 
+export type DesignClass = 'scene-head' | 'shot-transition' | 'shot-cut';
+
+/** 设计内边界（成片秒）：幕头装置 / 镜头转场窗口 / 硬切瞬间 —— 这些位置的快速变化是设计内行为，不应计为孤立跳变 */
+export function designedSpans(ir: KineIR): { label: DesignClass; span: [number, number] }[] {
+  const spans: { label: DesignClass; span: [number, number] }[] = [];
+  ir.scenes.forEach((s, i) => {
+    // 法定幕头装置：红条+白闪 0.24s（仅 scene index>0）
+    if (i > 0) spans.push({ label: 'scene-head', span: [s.t0 - 1e-4, s.t0 + 0.34] });
+    for (const sh of s.shots) {
+      if (sh.index <= 0) continue; // 首镜头无转场
+      if (sh.transition) {
+        // 转场占用镜头开头 dur 秒（lt 空间），换算为成片秒：按镜头内时间占比折算
+        // 转场在 lt 空间持续 transition.dur；映射回成片秒：ΔT = Δlt / (rate × accelFactor)
+        // （不能用 (t1-t0) 比例换算：accel 钐位/末镜头尾部延展会高估窗口）
+        // 转场在 lt 空间占 dur 秒；精确映射回成片秒：ltEnd=min(lt0+td,lt1,s.dur) → TEnd=T0+ltEnd/(rate×accelFactor) → tEnd=TtoT(TEnd)
+        const rateAcc = (s.rate > 0 ? s.rate : 1) * (s.accelFactor || 1);
+        const td = sh.transition.dur;
+        const ltEnd = Math.min(sh.lt0 + td, sh.lt1, s.dur);
+        const TEnd = s.T0 + ltEnd / (rateAcc > 0 ? rateAcc : 1);
+        const tEnd = TtoT(ir.time.map, Math.min(TEnd, s.T1));
+        spans.push({ label: 'shot-transition', span: [sh.t0 - 1e-4, tEnd + 0.08] });
+      } else {
+        // 未声明转场 = 设计内硬切（单帧对孤立变化）
+        spans.push({ label: 'shot-cut', span: [sh.t0 - 0.12, sh.t0 + 0.12] });
+      }
+    }
+  });
+  return spans;
+}
+
+/** 帧对 [f0,f1] 落在设计内边界→返回类名；否则 null */
+export function classifyDesign(ir: KineIR, f0: number, f1: number): DesignClass | null {
+  const fps = ir.time.map.fps;
+  const a = f0 / fps;
+  const b = f1 / fps;
+  for (const d of designedSpans(ir)) {
+    if (b >= d.span[0] && a <= d.span[1]) return d.label;
+  }
+  return null;
+}
+
 async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs: MetricInputs): Promise<MetricResult> {
   if (!inputs.frames) throw new Error('transition_spike 需要 FrameProvider（inputs.frames）');
   const windows = denseWindows(ir, scope);
-  const fps = ir.time.map.fps;
-  // 法定幕头装置：红条+白闪 0.24s（仅 scene index>0）。与 [t0, t0+0.34] 相交的帧对命中不计。
-  const designed = ir.scenes
-    .map((s, i) => ({ t0: s.t0, on: i > 0 }))
-    .filter((s) => s.on)
-    .map((s) => [s.t0 - 1e-4, s.t0 + 0.34] as [number, number]);
-  const inDesigned = (f0: number, f1: number) => {
-    const a = f0 / fps;
-    const b = f1 / fps;
-    return designed.some(([lo, hi]) => b >= lo && a <= hi);
-  };
   let hits = 0;
-  let ignoredDesigned = 0;
+  const ignored: Record<DesignClass, number> = { 'scene-head': 0, 'shot-transition': 0, 'shot-cut': 0 };
   const hitFrames: number[] = [];
   const ignoredFrames: number[] = [];
   const diffs: number[] = [];
@@ -300,8 +330,9 @@ async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs:
     for (const h of r.hits) {
       const f0 = w[h.from] ?? w[0];
       const f1 = w[h.to] ?? f0;
-      if (inDesigned(f0, f1)) {
-        ignoredDesigned += 1;
+      const cls = classifyDesign(ir, f0, f1);
+      if (cls) {
+        ignored[cls] += 1;
         ignoredFrames.push(f1);
       } else {
         hits += 1;
@@ -311,16 +342,19 @@ async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs:
     diffs.push(...r.diffs);
     framesAll.push(...w);
   }
+  const ignoredTotal = ignored['scene-head'] + ignored['shot-transition'] + ignored['shot-cut'];
   const facts = [
     `转场窗口 ${windows.length} 个，命中孤立跳变 ${hits}`,
-    ignoredDesigned > 0 ? `幕头法定装置窗口内另有 ${ignoredDesigned} 处命中（已豁免：红条白闪 0.24s）` : null,
+    ignoredTotal > 0
+      ? `设计内边界另豁免 ${ignoredTotal} 处（幕头装置 ${ignored['scene-head']}｜镜头转场 ${ignored['shot-transition']}｜硬切 ${ignored['shot-cut']}）`
+      : null,
   ].filter(Boolean) as string[];
   return {
     metric: 'transition_spike', scope, value: hits, unit: 'count',
     agg: { min: 0, max: hits },
-    extras: { windows: windows.length, diffs, hitFrames, ignoredDesigned, ignoredFrames },
+    extras: { windows: windows.length, diffs, hitFrames, ignored, ignoredFrames },
     sample: { frames: framesAll },
-    interpretation: hits === 0 ? '无孤立跳变（健康）。' : '存在孤立跳变：疑似卡顿/闪回——A 遮罩方向 1-p、B/C/D 位移缩放须收回（ov=1+.15*(1-d)）。',
+    interpretation: hits === 0 ? '无孤立跳变（健康；设计内边界—幕头/镜头转场/硬切—不计）。' : '存在孤立跳变：疑似卡顿/闪回——A 遮罩方向 1-p、B/C/D 位移缩放须收回（ov=1+.15*(1-d)）。',
     facts,
   };
 }

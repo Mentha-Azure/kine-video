@@ -205,6 +205,7 @@ demo/
 
 已知限制：`verify` 的 tail-clean 对“SFX 延至片尾/收尾偏响”的工程会给 WARN（属设计内、按 L-AUD-002 解释；可用 `audio.tail_fade` 调整——mv-mini 模板已用 `1.0` 使 fresh verify 0 WARN）；
 `render --range` 默认帧语义（秒用 `0:5s` 后缀）；M7 只读预览 UI 未实现（非目标优先）。
+`transition_spike` 对**设计内边界自动豁免**（幕头红条白闪装置、镜头转场窗口、硬切瞬间——facts/extras 单列豁免计数），只有设计外的孤立尖峰（卡顿/闪回）才计入命中。
 
 ## 音频：SFX 参数表与 tail_fade
 
