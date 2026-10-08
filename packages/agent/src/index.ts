@@ -22,3 +22,4 @@ export { toolForge } from './tools/forge';
 export { toolStyle } from './tools/style';
 export { toolWidgets } from './tools/widgets';
 export { toolRules, RULES } from './tools/rules';
+export { parseRangeSpec } from './tools/util';

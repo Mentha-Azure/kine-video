@@ -39,7 +39,20 @@ export async function toolRender(ctx: AgentContext, opts: RenderOptions = {}): P
   const defaults = renderDefaults(ir, store.root);
   const map = ir.time.map;
   const audioOn = opts.audio !== false;
-  const mixFile = audioOn ? await ensureMix(ctx, ir) : null;
+  // v3 P0-2：交付路径音频构建必须成功（strict）——不再静默降级出无声成片
+  let mixFile: string | null = null;
+  if (audioOn) {
+    try {
+      mixFile = await ensureMix(ctx, ir, { strict: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const hints = (e as { hints?: string[] }).hints ?? [];
+      return fail('render', 'E-AUDIO-MIX-001', msg, {
+        facts: ['渲染属交付路径：音频构建失败时必须中止（避免无声成片）'],
+        hints: [...hints, '可先用 kine check 定位 audio 配置问题；或 --no-audio 显式渲染无声版'],
+      });
+    }
+  }
   let presetNote = '';
   if (opts.preset !== undefined) {
     if (!(PRESETS as readonly string[]).includes(opts.preset)) {

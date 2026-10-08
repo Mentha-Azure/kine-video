@@ -1,0 +1,8 @@
+# Kine 种子色板 — noir（黑白胶片）
+# 注册：kine library seed  →  引用：theme.palette: library://core/noir
+name: noir
+tags: [noir, mono, film]
+bg: ['#050507', '#0b0b0e']
+text: '#e8e8ea'
+text_dim: '#9a9aa2'
+accent: '#f2f2f2'

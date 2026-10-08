@@ -1,0 +1,8 @@
+# Kine 种子色板 — cyan-lab（实验室青）
+# 注册：kine library seed  →  引用：theme.palette: library://core/cyan-lab
+name: cyan-lab
+tags: [cyan, lab, tech]
+bg: ['#030809', '#081114']
+text: '#d9f2f5'
+text_dim: '#7fa8ad'
+accent: '#2de2e6'

@@ -1,6 +1,6 @@
 // @kine/agent — kine.library.*：用户级资源库管理
 // add/list/search/rm/gc/verify/pin/tags —— 内容寻址、标签句柄、引用校验。
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { parse as parseYamlText } from 'yaml';
 import {
@@ -9,6 +9,7 @@ import {
   BLOB_KINDS,
   gcLibrary,
   kineLibraryRoot,
+  kineRepoRoot,
   LIBRARY_KINDS,
   listLibraryEntries,
   normalizeTag,
@@ -22,7 +23,7 @@ import type { AgentContext } from '../context';
 import { fail, ok, type NextAction, type ToolResult } from '../types';
 
 export interface LibraryArgs {
-  action: 'add' | 'list' | 'search' | 'rm' | 'gc' | 'verify' | 'pin' | 'tags';
+  action: 'add' | 'list' | 'search' | 'rm' | 'gc' | 'verify' | 'pin' | 'tags' | 'seed';
   file?: string;
   kind?: string;
   name?: string;
@@ -228,6 +229,68 @@ export async function toolLibrary(ctx: AgentContext, args: LibraryArgs): Promise
         return fail(tool, err.code ?? 'E-LIB-013', err.message ?? 'pin 失败');
       }
     }
+    case 'seed': {
+      // v3 P1-4：内置种子内容（seeds/palettes/*.yaml → 用户资源库 core/ 命名空间）——幂等：已存在跳过
+      const seedsDir = path.join(kineRepoRoot(), 'seeds', 'palettes');
+      if (!existsSync(seedsDir)) {
+        return fail(tool, 'E-LIB-025', `种子目录不存在：${seedsDir}`, {
+          hints: ['seeds 目录随 kine 仓库分发；确认运行的是完整仓库副本'],
+        });
+      }
+      const files = readdirSync(seedsDir).filter((f) => f.endsWith('.yaml')).sort();
+      const existing = new Set(listLibraryEntries(root).map((e) => e.id));
+      const added: string[] = [];
+      const skipped: string[] = [];
+      const errors: string[] = [];
+      for (const f of files) {
+        const name = f.replace(/\.yaml$/, '');
+        const id = `core/${name}`;
+        if (existing.has(id)) {
+          skipped.push(id);
+          continue;
+        }
+        try {
+          const data = parseYamlText(readFileSync(path.join(seedsDir, f), 'utf8')) as Record<string, unknown>;
+          if (!data || typeof data !== 'object') throw new Error('YAML 内容为空');
+          const bg = data.bg;
+          if (!Array.isArray(bg) || bg.length !== 2) throw new Error('bg 需为两个颜色');
+          for (const c of bg) {
+            const mm = /^#?([0-9a-fA-F]{6})$/.exec(String(c).trim());
+            if (!mm) throw new Error(`bg 颜色非法：${String(c)}（需 #rrggbb）`);
+            const v = parseInt(mm[1]!, 16);
+            if (Math.max((v >> 16) & 255, (v >> 8) & 255, v & 255) > 32) throw new Error(`bg 过亮（通道应 ≤32）：${String(c)}`);
+          }
+          for (const k of ['text', 'text_dim', 'accent']) {
+            if (!/^#?[0-9a-fA-F]{6}$/.test(String(data[k] ?? '').trim())) throw new Error(`${k} 颜色非法：${String(data[k])}`);
+          }
+          await addLibraryEntry(root, {
+            name: String(data.name ?? name),
+            kind: 'palette',
+            ns: 'core',
+            id,
+            tags: Array.isArray(data.tags) ? (data.tags as unknown[]).map((t) => normalizeTag(String(t))) : [normalizeTag(name)],
+            status: 'library',
+            data,
+            source: `seeds/palettes/${f}`,
+          });
+          added.push(id);
+        } catch (e) {
+          errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      return ok(tool, { added, skipped, errors }, {
+        verdict: errors.length > 0 ? 'FAIL' : 'PASS',
+        facts: [
+          `种子色板：新增 ${added.length}｜跳过（已存在）${skipped.length}｜失败 ${errors.length}`,
+          ...added.map((sid) => `+ ${sid} → 引用：theme.palette: library://${sid}`),
+          ...errors.map((e2) => `✖ ${e2}`),
+        ],
+        hints: [
+          added.length > 0 ? '应用：kine style apply --ref library://core/noir --tx --quote "…"' : '全部种子已注册；kine library list --kind palette 查看',
+        ],
+        nextActions: [{ tool: 'kine.style', args: { action: 'show' } }, { tool: 'kine.library', args: { action: 'list', kind: 'palette' } }],
+      });
+    }
     case 'tags': {
       const all = listLibraryEntries(root);
       const counts = new Map<string, number>();
@@ -238,6 +301,6 @@ export async function toolLibrary(ctx: AgentContext, args: LibraryArgs): Promise
       });
     }
     default:
-      return fail(tool, 'E-LIB-020', `未知 action "${args.action}"`, { facts: ['可用：add | list | search | rm | gc | verify | pin | tags'] });
+      return fail(tool, 'E-LIB-020', `未知 action "${args.action}"`, { facts: ['可用：add | list | search | rm | gc | verify | pin | tags | seed'] });
   }
 }

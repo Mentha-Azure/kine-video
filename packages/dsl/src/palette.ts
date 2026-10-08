@@ -51,6 +51,27 @@ export function resolvePalette(ref: string | undefined, home?: string): PaletteR
       error: { code: 'E-LIB-003', message: `条目 ${res.entry.id} 不是有效色板（data 需含 bg[2]/text/accent）` },
     };
   }
+  // v3 P0-3：注册期就把关背景亮度（否则可绕过 lint 的 bg≤32 检查造成发灰）
+  for (const c of data.bg as unknown[]) {
+    const mm = /^#?([0-9a-fA-F]{6})$/.exec(String(c).trim());
+    if (!mm) {
+      return {
+        ok: false,
+        error: { code: 'E-LIB-003', message: `色板 ${res.entry.id} 的 bg 颜色非法：${String(c)}（需 #rrggbb）` },
+      };
+    }
+    const v = parseInt(mm[1]!, 16);
+    if (Math.max((v >> 16) & 255, (v >> 8) & 255, v & 255) > 32) {
+      return {
+        ok: false,
+        error: {
+          code: 'E-COLOR-002',
+          message: `色板 ${res.entry.id} 的背景 ${String(c)} 过亮（通道应 ≤32，防发灰/白纱；v3 P0-3 注册期把关）`,
+          candidates: ['目标黑电平 6–9 由 black_level 指标在成片帧上把关'],
+        },
+      };
+    }
+  }
   return {
     ok: true,
     source: 'library',

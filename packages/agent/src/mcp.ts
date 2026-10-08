@@ -65,7 +65,7 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
     properties: {
       query: str('自然语义查询（别名/标签/id/内容）'),
       scene: str('限定幕 id'),
-      range: str('限定时间窗 [t0:t1]（成片秒）'),
+      range: str('限定时间窗 a:b（成片秒，如 0:5 / 12.5:14；严格校验，非法格式报 E-TIME-003）'),
       kind: str('限定图层类型 widget|text|particles|image|video|fx'),
     },
     required: ['query'],
@@ -100,7 +100,7 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
     properties: {
       metric: str('指标名（density/frame_diff/cam_jitter/...）'),
       scene: str('限定幕 id'),
-      range: str('时间窗 [t0:t1]（成片秒）'),
+      range: str('时间窗 a:b（成片秒，如 0:5 / 12.5:14；严格校验：非法格式/超出时长报 E-METRIC-003）'),
       at: num('单点成片秒'),
       expect: str('期望表达式，如 ">= 0.9 %"'),
       step: num('range 采样步进（秒，默认 0.4；越小越密）'),

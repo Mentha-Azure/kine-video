@@ -1,0 +1,8 @@
+# Kine 种子色板 — ice（冰蓝）
+# 注册：kine library seed  →  引用：theme.palette: library://core/ice
+name: ice
+tags: [ice, cold, pale]
+bg: ['#05080d', '#0a1018']
+text: '#e2eef7'
+text_dim: '#8fa6bb'
+accent: '#9fd8ff'

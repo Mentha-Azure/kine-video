@@ -38,7 +38,7 @@ export const RULES: RuleInfo[] = [
   { code: 'W-POST-004', severity: 'warn', scope: 'theme.post', meaning: '后处理参数越界（通用）', fix: '对照 facts 中的上限值点亮 clamp' },
   { code: 'E-AUD-003', severity: 'error', scope: 'theme.post.flash.mode', meaning: 'flash.mode=env 用能量包络驱动提亮——历史灰白病根因（RGB(6,6,8)→(28,28,32)）', fix: '改回 transient（瞬态驱动 GATE .005/GAIN 130/DECAY .80）' },
   { code: 'E-COLOR-001', severity: 'error', scope: 'theme.accent / accent_secondary', meaning: '强调色纪律：core 必须 #ff2e3f；extended/free 必须 == palette 值', fix: '改用当前 palette 的 accent；或者把色板做成库条目' },
-  { code: 'E-COLOR-002', severity: 'error', scope: 'theme.bg', meaning: '背景过亮（通道 > 32）会发灰', fix: '压暗背景（RGB 6–9 最稳）；黑电平由 black_level 指标把关' },
+  { code: 'E-COLOR-002', severity: 'error', scope: 'theme.bg / 色板 bg', meaning: '背景过亮（通道 > 32）会发灰（含色板注册期把关，v3 P0-3）', fix: '压暗背景（RGB 6–9 最稳）；黑电平由 black_level 指标把关' },
   { code: 'E-COLOR-003', severity: 'error', scope: 'theme.palette', meaning: 'profile=core 不允许设置 palette', fix: '加 theme.profile: extended（kine style apply --ref …）' },
   { code: 'W-FONT-001', severity: 'warn', scope: 'theme.font', meaning: '非等宽字体（破坏确定性/风格一致性）', fix: '使用等宽字体（Consolas 等）' },
   // ---- 版式 / HUD / 转场
@@ -52,6 +52,9 @@ export const RULES: RuleInfo[] = [
   { code: 'W-AUD-005', severity: 'warn', scope: 'audio', meaning: '收尾尾段不足（SFX 贴近片尾）', fix: '调大 audio.tail_fade（0.1–3）或提前收尾' },
   { code: 'W-SYNTH-001', severity: 'warn', scope: 'audio.sfx.events[].params', meaning: 'SFX 未知参数键（会被合成器静默忽略——死旋钮）', fix: '对照参数白名单（README「SFX 参数表」）改键名' },
   { code: 'W-SYNTH-002', severity: 'warn', scope: 'piano_motif.params.gain', meaning: 'gain > 0.5 会被合成器内部上限截断（静默降级）', fix: '参数保留 0–0.5；整体响度用事件级 gain' },
+  { code: 'E-SYNTH-001', severity: 'error', scope: 'audio.sfx.events[].params 值', meaning: '合成器参数值类型/范围非法（如 piano_motif.notes 不是频率数组——render 期才会炸）', fix: '按参数规格修正：notes 用频率数组如 [220.0, 261.63, 329.63]；数字参数注意上下限' },
+  { code: 'E-AUDIO-MIX-001', severity: 'error', scope: 'render/交付路径音频构建', meaning: '音频构建失败且交付路径为 strict（拒绝无声成片）', fix: '排查 audio 配置（sfx 参数/音乐文件）；或显式 render --no-audio 渲染无声版' },
+  { code: 'W-LIB-002', severity: 'warn', scope: 'theme.palette', meaning: 'extended 色板与 core 视觉完全相同（profile 形同虚设——v3 实测同质化根因）', fix: '换差异化色板（kine library list --kind palette）或回到 profile: core' },
   // ---- 资源库 / 风格
   { code: 'E-LIB-001', severity: 'error', scope: 'library 引用', meaning: 'library:// 引用未找到条目', fix: 'kine library list 查看；或先 kine library add' },
   { code: 'E-LIB-002', severity: 'error', scope: 'library 引用', meaning: '引用歧义（标签/模糊命中多个候选）', fix: '用完整 id 或唯一 @tag 精确引用' },

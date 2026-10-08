@@ -1,0 +1,8 @@
+# Kine 种子色板 — violet（紫罗兰）
+# 注册：kine library seed  →  引用：theme.palette: library://core/violet
+name: violet
+tags: [violet, purple, dream]
+bg: ['#07030d', '#0e0818']
+text: '#e9dcf5'
+text_dim: '#9f8cb5'
+accent: '#a855f7'

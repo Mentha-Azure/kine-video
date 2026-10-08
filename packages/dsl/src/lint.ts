@@ -1,9 +1,9 @@
 // @kine/dsl — lint：踩坑防护规则（09-踩坑防护 §9.5）
 import type { Issue } from './errors';
-import { KNOWN_KEYS, SYNTH_PARAM_KEYS, type ProjectSpecT } from './schema';
+import { KNOWN_KEYS, SYNTH_PARAM_KEYS, validateSynthParamValue, type ProjectSpecT } from './schema';
 import type { LineLookup } from './load';
 import { kineHomeDir } from './library';
-import { resolvePalette, type PaletteSpec } from './palette';
+import { applyPalette, CORE_PALETTE, resolvePalette, type PaletteSpec } from './palette';
 
 export interface LintOptions {
   file: string;
@@ -154,28 +154,24 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
         hints: ['要更响请提升事件级 gain（混音层），而不是 params.gain'],
       });
     }
+    // v3 P0-4：参数值类型/范围校验（非法值曾在 render 期才炸：notes:4 → TypeError → 无声成片）
+    for (const [k, v] of Object.entries(ev.params ?? {})) {
+      if (!allowed.includes(k)) continue; // 未知键已由 W-SYNTH-001 处理
+      const verr = validateSynthParamValue(ev.sfx, k, v);
+      if (verr) {
+        push({
+          code: 'E-SYNTH-001',
+          severity: 'error',
+          message: verr,
+          where: loc(opts, ['audio', 'sfx', 'events', i, 'params', k]),
+          facts: ['此类非法参数会在音频合成阶段失败（audit 期即挡下，避免 render 才发现）'],
+          hints: ev.sfx === 'piano_motif' && k === 'notes' ? ['示例：notes: [220.0, 261.63, 329.63]'] : ['参数表见 AGENTS.md「SFX 合成参数速查」'],
+        });
+      }
+    }
   });
 
-  // ---- L-POST-001..004 色彩后处理硬上限
-  const post = spec.theme.post;
-  const W = (code: string, path: (string | number)[], message: string, facts: string[], hints: string[]) => push({ code, severity: 'warn', message, where: loc(opts, path), facts, hints });
-  if (post.vignette.base > 0.20 + 1e-9) W('W-POST-001', ['theme', 'post', 'vignette', 'base'], `暗角 base=${post.vignette.base} 超过硬上限 0.20`, [`当前 ${post.vignette.base}`, '上限 0.20'], ['改为 0.20：k=clamp(.20+tw*.11+beat*.09,0,1)']);
-  if (post.vignette.max > 0.90 + 1e-9) W('W-POST-001', ['theme', 'post', 'vignette', 'max'], `暗角 max=${post.vignette.max} 超过 0.90（最外圈）`, [`当前 ${post.vignette.max}`, '上限 0.90'], ['改为 0.90']);
-  if (post.scanline.base > 0.085 + 1e-9) W('W-POST-002', ['theme', 'post', 'scanline', 'base'], `扫描线 base=${post.scanline.base} 超过 0.085`, [`当前 ${post.scanline.base}`, '上限 0.085'], ['改为 0.085：(≤0.085+tw*0.020)']);
-  if (post.scanline.max > 0.12 + 1e-9) W('W-POST-002', ['theme', 'post', 'scanline', 'max'], `扫描线 max=${post.scanline.max} 超过硬上限 0.12`, [`当前 ${post.scanline.max}`, '上限 0.12'], ['改为 0.12']);
-  if (post.flash.max_alpha > 0.085 + 1e-9) W('W-POST-003', ['theme', 'post', 'flash', 'max_alpha'], `强拍白闪 max_alpha=${post.flash.max_alpha} 超过 0.085`, [`当前 ${post.flash.max_alpha}`, '上限 0.085'], ['改为 0.085（瞬态驱动）']);
-  if (post.flash.mode === 'env') {
-    push({
-      code: 'E-AUD-003', severity: 'error',
-      message: '强拍提亮禁止由能量包络（env）驱动：历史灰白病根因（LOC.energy 常年 0.87 → 整屏发灰，黑电平 RGB(6,6,8)→(28,28,32)）',
-      where: loc(opts, ['theme', 'post', 'flash', 'mode']),
-      facts: ['必须用瞬态驱动：GATE .005 / GAIN 130 / DECAY .80 的 flash²'],
-      hints: ["改为 mode: transient（或删除该字段，默认即 transient）"],
-    });
-  }
-  if (post.black_level.rgb_min < 6 || post.black_level.rgb_max > 9) W('W-POST-004', ['theme', 'post', 'black_level'], `黑电平窗口 [${post.black_level.rgb_min}, ${post.black_level.rgb_max}] 超出规范 [6, 9]`, [`当前 [${post.black_level.rgb_min}, ${post.black_level.rgb_max}]`], ['背景 RGB 应在 6–9 之间（防发灰/死黑）']);
-
-  // ---- L-COLOR-001..003 色彩纪律（M10：profile/palette 感知）
+  // ---- L-COLOR 色彩纪律前置：先解析色板得到「有效主题」（v3 P0-3：lint 与 compile 校验同一对象）
   const profile = spec.theme.profile;
   if (profile === 'core' && spec.theme.palette !== undefined) {
     push({
@@ -201,6 +197,36 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
       palette = pr.palette;
     }
   }
+  const effTheme = palette ? applyPalette(spec.theme, palette) : spec.theme;
+
+  // ---- L-POST-001..004 色彩后处理硬上限（作用于有效主题：palette 可覆盖 post 默认值）
+  const post = effTheme.post;
+  const W = (code: string, path: (string | number)[], message: string, facts: string[], hints: string[]) => push({ code, severity: 'warn', message, where: loc(opts, path), facts, hints });
+  if (palette) {
+    const sameBg = palette.bg[0].toLowerCase() === CORE_PALETTE.bg[0].toLowerCase() && palette.bg[1].toLowerCase() === CORE_PALETTE.bg[1].toLowerCase();
+    const sameAccent = palette.accent.toLowerCase() === CORE_PALETTE.accent.toLowerCase();
+    const fontChanged = typeof palette.font === 'string' && palette.font !== spec.theme.font.family;
+    if (sameBg && sameAccent && !fontChanged) {
+      W('W-LIB-002', ['theme', 'palette'], `色板 "${spec.theme.palette}" 与 core 视觉完全相同（accent/bg 一致且字体未变）——profile: extended 形同虚设`, ['v3 实测：多数 extended 工程 accent 仍 #ff2e3f、字体同 core'], ['换用差异化色板（kine library list --kind palette），或回到 profile: core']);
+    }
+  }
+  if (post.vignette.base > 0.20 + 1e-9) W('W-POST-001', ['theme', 'post', 'vignette', 'base'], `暗角 base=${post.vignette.base} 超过硬上限 0.20`, [`当前 ${post.vignette.base}`, '上限 0.20'], ['改为 0.20：k=clamp(.20+tw*.11+beat*.09,0,1)']);
+  if (post.vignette.max > 0.90 + 1e-9) W('W-POST-001', ['theme', 'post', 'vignette', 'max'], `暗角 max=${post.vignette.max} 超过 0.90（最外圈）`, [`当前 ${post.vignette.max}`, '上限 0.90'], ['改为 0.90']);
+  if (post.scanline.base > 0.085 + 1e-9) W('W-POST-002', ['theme', 'post', 'scanline', 'base'], `扫描线 base=${post.scanline.base} 超过 0.085`, [`当前 ${post.scanline.base}`, '上限 0.085'], ['改为 0.085：(≤0.085+tw*0.020)']);
+  if (post.scanline.max > 0.12 + 1e-9) W('W-POST-002', ['theme', 'post', 'scanline', 'max'], `扫描线 max=${post.scanline.max} 超过硬上限 0.12`, [`当前 ${post.scanline.max}`, '上限 0.12'], ['改为 0.12']);
+  if (post.flash.max_alpha > 0.085 + 1e-9) W('W-POST-003', ['theme', 'post', 'flash', 'max_alpha'], `强拍白闪 max_alpha=${post.flash.max_alpha} 超过 0.085`, [`当前 ${post.flash.max_alpha}`, '上限 0.085'], ['改为 0.085（瞬态驱动）']);
+  if (post.flash.mode === 'env') {
+    push({
+      code: 'E-AUD-003', severity: 'error',
+      message: '强拍提亮禁止由能量包络（env）驱动：历史灰白病根因（LOC.energy 常年 0.87 → 整屏发灰，黑电平 RGB(6,6,8)→(28,28,32)）',
+      where: loc(opts, ['theme', 'post', 'flash', 'mode']),
+      facts: ['必须用瞬态驱动：GATE .005 / GAIN 130 / DECAY .80 的 flash²'],
+      hints: ["改为 mode: transient（或删除该字段，默认即 transient）"],
+    });
+  }
+  if (post.black_level.rgb_min < 6 || post.black_level.rgb_max > 9) W('W-POST-004', ['theme', 'post', 'black_level'], `黑电平窗口 [${post.black_level.rgb_min}, ${post.black_level.rgb_max}] 超出规范 [6, 9]`, [`当前 [${post.black_level.rgb_min}, ${post.black_level.rgb_max}]`], ['背景 RGB 应在 6–9 之间（防发灰/死黑）']);
+
+  // ---- L-COLOR-001..003 强调色一致性（色板已在前置块解析）
   const expectedAccent = palette ? palette.accent.toLowerCase() : '#ff2e3f';
   if (spec.theme.accent.toLowerCase() !== expectedAccent) {
     push({
@@ -221,7 +247,7 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
       where: loc(opts, ['theme', 'accent_secondary']),
     });
   }
-  for (const [i, c] of spec.theme.bg.entries()) {
+  for (const [i, c] of effTheme.bg.entries()) {
     const rgb = hexToRgb(c);
     if (Math.max(rgb.r, rgb.g, rgb.b) > 32) {
       push({
@@ -234,7 +260,7 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
   }
 
   // ---- L-FONT-001
-  if (!/mono/i.test(spec.theme.font.family)) {
+  if (!/mono/i.test(effTheme.font.family)) {
     W('W-FONT-001', ['theme', 'font', 'family'], `字体族 "${spec.theme.font.family}" 未声明等宽字体`, ['全站统一等宽字体'], ['family 应包含 monospace/等宽族名']);
   }
 

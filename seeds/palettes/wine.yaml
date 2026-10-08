@@ -1,0 +1,8 @@
+# Kine 种子色板 — wine（酒红）
+# 注册：kine library seed  →  引用：theme.palette: library://core/wine
+name: wine
+tags: [wine, rose, warm]
+bg: ['#0a0406', '#140a0e']
+text: '#f0dfe4'
+text_dim: '#a58a92'
+accent: '#ff4d6d'

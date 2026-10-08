@@ -203,7 +203,7 @@ demo/
 
 | 项目 | 状态 |
 | --- | --- |
-| `npx vitest run` | 12 文件 / 48 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类） |
+| `npx vitest run` | 13 文件 / 56 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3 守卫：range 严格校验/SFX 参数值/色板门槛） |
 | 7 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码；short-transition 用于 transition_spike 设计内豁免实测） |
 | M0 五命令验收（mv-mini） | `init`（绝对/相对路径 × blank/mv-mini 模板）· `audit`（语法 0/0、purity 0、运行时全轴扫描 0 错误）· `render`（v0.4，1440 帧全缓存命中，6.8s）· `verify`（帧数/时长/音频/抽检全过，tail-clean 为已解释 WARN）· `preview --at 12 --dur 4`（含音轨成品形态）——全 PASS |
 | MCP 冒烟 | initialize / tools(29) / map / probe / resources(7) 全通过 |
@@ -213,11 +213,11 @@ demo/
 
 已知限制：`verify` 的 tail-clean 对“SFX 延至片尾/收尾偏响”的工程会给 WARN（属设计内、按 L-AUD-002 解释；可用 `audio.tail_fade` 调整——mv-mini 模板已用 `1.0` 使 fresh verify 0 WARN）；
 `render --range` 默认帧语义（秒用 `0:5s` 后缀）；M7 只读预览 UI 未实现（非目标优先）。
-`transition_spike` 对**设计内边界自动豁免**（幕头红条白闪装置、镜头转场窗口、硬切瞬间——facts/extras 单列豁免计数），只有设计外的孤立尖峰（卡顿/闪回）才计入命中。
+`transition_spike` 对**设计内边界自动豁免**（幕头红条白闪装置、镜头转场窗口、硬切瞬间、**强拍白闪 beat-flash**——facts/extras 单列豁免计数），只有设计外的孤立尖峰（卡顿/闪回）才计入命中。
 
 ## 音频：SFX 参数表与 tail_fade
 
-每个 SFX 事件可带 `params`；**未识别的参数键会在 audit 报 `W-SYNTH-001`**（不再静默忽略）。
+每个 SFX 事件可带 `params`；**未识别的参数键在 audit 报 `W-SYNTH-001`（warn），参数值非法（如 `notes: 4`——需写成频率数组 `[220.0, 261.63]`）报 `E-SYNTH-001`（error）**——都在 audit 阶段挡住，不再拖到 render 才炸。
 
 | sfx | 可用 params |
 | --- | --- |
@@ -247,6 +247,17 @@ v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部
 - **风格档案**：`kine style show` 查看当前 profile 与色板解析；`kine style apply --ref library://ai/noir --tx --quote "…"` 走标准事务（impact 保留全部音频节点，自动 audit）。
 - 新 MCP 资源：`kine://rules`（规则含义与修复示例）、`kine://library`、`kine://widgets`、`kine://music`。
 - 哈希兼容：未显式设置 `profile`/`palette` 的旧工程，specHash/visualHash **逐字节不变**（canonical 投影）。
+
+## v3：护栏三修与种子内容
+
+基于第三轮外测的四个 P0 与三个 P1，v3 修复「校验对象与错误路径」（旧工程行为不变）：
+
+- **range 严格校验**：`measure` / `find` 的 `--range` 一律为成片秒 `a:b`（如 `0:5` / `12.5:14`），严格解析——非法值直接报 `E-METRIC-003` / `E-TIME-003`（不再静默退化为默认采样）。
+- **音频静默降级归零**：`render` 交付路径混音失败抛 `E-AUDIO-MIX-001`（带 hints；可 `--no-audio` 跳过）；其余工具失败也会留痕（progress/stderr），不再有「无声成片 + 误导错误码」。
+- **lint 与渲染同一对象**：颜色/字体/后处理检查作用于 **palette 应用后的有效主题**；色板注册期即校验 bg（非法→`E-LIB-003`、过亮→`E-COLOR-002`）；新增 `W-LIB-002`（色板与 core 视觉完全相同）。
+- **SFX 参数值校验**：键名白名单（`W-SYNTH-001`）之外再校验值类型/范围，非法报 `E-SYNTH-001`（如 `notes` 必须是频率数组）。
+- **内置种子**：`kine library seed` 一键注册 10 个官方色板（`core/noir`、`core/midnight`、`core/forest`、`core/wine`、`core/bw-high-contrast`、`core/amber`、`core/ember`、`core/cyan-lab`、`core/violet`、`core/ice`）——幂等（已存在跳过）；引用：`theme.palette: library://core/noir` 或 `kine style apply --ref library://core/noir`。
+- **edit 支持数组/对象值**：`kine edit "set scenes[s].layers[l].props.notes=[220.0, 261.63]" …`（带引号的 `"[..]"`/`"{..}"` 会自动去引号）。
 
 ## 规格文档
 

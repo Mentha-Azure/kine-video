@@ -1,0 +1,8 @@
+# Kine 种子色板 — forest（深林绿）
+# 注册：kine library seed  →  引用：theme.palette: library://core/forest
+name: forest
+tags: [forest, green, calm]
+bg: ['#040806', '#0a120c']
+text: '#dcefe2'
+text_dim: '#8aa694'
+accent: '#3ddc84'

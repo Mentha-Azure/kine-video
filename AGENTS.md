@@ -16,7 +16,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 ## 标准工作流
 
 1. **读事实**：`kine info` → `kine map --t <成片秒>` → `kine probe --at <成片秒>`；元素定位用 `find`，旋钮语义用 `explain`。
-2. **先量后改**：`kine measure <metric> [--scene X | --range a:b | --at t]`（如 density / frame_diff / cam_jitter）。
+2. **先量后改**：`kine measure <metric> [--scene X | --range a:b | --at t]`（如 density / frame_diff / cam_jitter；`--range`/`--at` 均为**成片秒**，严格校验——非法值直接报错）。
 3. **改动**：`kine edit "set <path>=<value>" --quote "用户原话" --tx [--preview]`
    —— 不带 `--tx` 是 dry-run（看 impact）；提交会写 changelog、留备份、可回滚。
 4. **三层验证**：`kine audit`（语法/纪律/运行时扫描）→ `kine check`（断言集）→ `kine preview --at X --dur 4`（给人看的成品形态短片）。
@@ -47,7 +47,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 预览 | `kine preview --at 12 --dur 4` |
 | 出片/终检 | `kine render [--range 0:300 或 0:5s] [--preset ultrafast]` / `kine verify` |
 | 变更历史/回滚 | `kine changelog --since 1d` / `kine rollback tx_20261007_001` |
-| 资源库 | `kine library add <file> --kind music` / `kine library list --kind theme` / `kine library tags` |
+| 资源库 | `kine library add <file> --kind music` / `kine library list --kind theme` / `kine library tags` / `kine library seed`（注册内置种子色板 core/*，幂等） |
 | 音乐库 | `kine music add <file> --name demo` / `kine music fit` |
 | 创作资源 | `kine forge create palette noir --tags noir` → `kine forge register noir` |
 | 应用色板 | `kine style apply --ref library://ai/noir --tx --quote "换配色"` |
@@ -70,3 +70,4 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | glitch | rate · blue_freq · dur |
 
 `audio.tail_fade`（0.1–3，默认 0.4）= SFX 末段淡出时长（改它只重建音频缓存，帧不受影响）。收尾偏响的工程可调大（mv-mini 用 1.0 使尾检 0 WARN）。
+参数值也有规格校验：非法值（如 `notes: 4`）报 `E-SYNTH-001` error——频率列表需写成 `[220.0, 261.63]`。

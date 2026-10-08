@@ -2,12 +2,12 @@
 import { listMetricNames, checkExpect, parseExpect, runMetric, metricDef, type MetricScope } from '@kine/metrics';
 import type { AgentContext } from '../context';
 import { fail, ok, type ToolResult } from '../types';
-import { ensureMix, makeFrameProvider } from './util';
+import { ensureMix, makeFrameProvider, parseRangeSpec } from './util';
 
 export interface MeasureOptions {
   metric: string;
   scene?: string;
-  range?: [number, number];
+  range?: string | [number, number];
   at?: number | string;
   expect?: string;
   /** 采样步长覆盖（秒；仅 range 采样生效；默认 0.4）——缺陷 #7：可配置采样密度 */
@@ -40,9 +40,10 @@ export async function toolMeasure(ctx: AgentContext, opts: MeasureOptions): Prom
     scope.scene = opts.scene;
   }
   if (opts.range) {
-    const [a, b] = opts.range;
-    if (!(b > a)) return fail('measure', 'E-METRIC-002', `--range 非法：[${opts.range.join(', ')}]`);
-    scope.range = [a, b];
+    // v3 P0-1：严格解析（成片秒 a:b 或数值数组）；禁止字符串按字符展开的静默错数据
+    const rr = parseRangeSpec(opts.range, ir.time.map.duration);
+    if (!rr.ok) return fail('measure', 'E-METRIC-003', rr.message ?? '--range 非法', { hints: rr.hints });
+    scope.range = rr.range!;
   }
   if (opts.at !== undefined) scope.at = opts.at;
   if (opts.step !== undefined && opts.step > 0) scope.step = opts.step;

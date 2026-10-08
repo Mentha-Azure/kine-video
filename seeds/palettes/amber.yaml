@@ -1,0 +1,8 @@
+# Kine 种子色板 — amber（琥珀）
+# 注册：kine library seed  →  引用：theme.palette: library://core/amber
+name: amber
+tags: [amber, warm, vintage]
+bg: ['#0a0704', '#140e08']
+text: '#f5e6cf'
+text_dim: '#b39b7a'
+accent: '#ffb224'

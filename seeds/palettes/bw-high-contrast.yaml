@@ -1,0 +1,8 @@
+# Kine 种子色板 — bw-high-contrast（高对比黑白）
+# 注册：kine library seed  →  引用：theme.palette: library://core/bw-high-contrast
+name: bw-high-contrast
+tags: [mono, contrast, stark]
+bg: ['#000000', '#0a0a0a']
+text: '#ffffff'
+text_dim: '#b8b8b8'
+accent: '#f5f5f5'

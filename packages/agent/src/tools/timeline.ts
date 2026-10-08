@@ -17,6 +17,7 @@ import { renderDefaults, openRenderSession } from '@kine/render';
 import type { ProbeResult } from '@kine/runtime';
 import type { AgentContext } from '../context';
 import { ok, fail, needInput, ambiguous, type ToolResult, type NextAction } from '../types';
+import { parseRangeSpec } from './util';
 
 // ---------------------------------------------------------------- compile
 
@@ -234,13 +235,20 @@ interface FindCandidate {
 
 export async function toolFind(
   ctx: AgentContext,
-  opts: { query: string; scene?: string; range?: [number, number]; kind?: string; limit?: number },
+  opts: { query: string; scene?: string; range?: string | [number, number]; kind?: string; limit?: number },
 ): Promise<ToolResult> {
   const c = await ctx.compile();
   const q = opts.query.trim();
   if (!q) return needInput('find', '请提供查询词（元素 alias / id / widget / 文本内容）');
   const ql = q.toLowerCase();
   const candidates: FindCandidate[] = [];
+  // v3 P0-1：range 严格解析（成片秒 a:b / 数值数组）
+  let rangeFilter: [number, number] | null = null;
+  if (opts.range !== undefined) {
+    const rr = parseRangeSpec(opts.range, c.ir.time.map.duration);
+    if (!rr.ok) return fail('find', 'E-TIME-003', rr.message ?? '--range 非法', { hints: rr.hints });
+    rangeFilter = rr.range!;
+  }
 
   for (let si = 0; si < c.ir.scenes.length; si++) {
     const sc = c.ir.scenes[si];
@@ -258,8 +266,8 @@ export async function toolFind(
       const win = Array.isArray(layer.window) ? (layer.window as [number, number]) : null;
       const t0 = win ? sceneT0 + Math.max(0, Math.min(win[0], sc.dur)) : sceneT0;
       const t1 = win ? sceneT0 + Math.max(0, Math.min(win[1], sc.dur)) : sceneT1;
-      if (opts.range) {
-        const [a, b] = opts.range;
+      if (rangeFilter) {
+        const [a, b] = rangeFilter;
         if (t1 < a || t0 > b) continue;
       }
 

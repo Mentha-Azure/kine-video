@@ -273,11 +273,14 @@ async function runCamJitter(ir: KineIR, scope: MetricScope | null, _inputs: Metr
   };
 }
 
-export type DesignClass = 'scene-head' | 'shot-transition' | 'shot-cut';
+export type DesignClass = 'scene-head' | 'shot-transition' | 'shot-cut' | 'beat-flash';
 
-/** 设计内边界（成片秒）：幕头装置 / 镜头转场窗口 / 硬切瞬间 —— 这些位置的快速变化是设计内行为，不应计为孤立跳变 */
+/** 设计内边界（成片秒）：幕头装置 / 镜头转场窗口 / 硬切瞬间 / 声明强拍白闪 —— 这些位置的快速变化是设计内行为，不应计为孤立跳变 */
 export function designedSpans(ir: KineIR): { label: DesignClass; span: [number, number] }[] {
   const spans: { label: DesignClass; span: [number, number] }[] = [];
+  const beatSpans: { label: DesignClass; span: [number, number] }[] = [];
+  const themeFlashMax = ir.theme.post.flash.max_alpha;
+  const fps = ir.time.map.fps;
   ir.scenes.forEach((s, i) => {
     // 法定幕头装置：红条+白闪 0.24s（仅 scene index>0）
     if (i > 0) spans.push({ label: 'scene-head', span: [s.t0 - 1e-4, s.t0 + 0.34] });
@@ -299,7 +302,31 @@ export function designedSpans(ir: KineIR): { label: DesignClass; span: [number, 
         spans.push({ label: 'shot-cut', span: [sh.t0 - 0.12, sh.t0 + 0.12] });
       }
     }
+    // —— beat-flash 豁免（v3 P1-3）：bpm 声明的强拍驱动 flash² 周期性阶跃（camera.flash2 1e-4→1.0、
+    // post.flash≈5e-2），帧对跨越拍点即命中——属设计内装置；仅当白闪全局开启且本幕未禁用时豁免。
+    // 顺序优先级：幕头→镜头→强拍（拍点 span 最后推入，避免抢占更广的幕头/转场窗口）。
+    const sceneFlashOn = (s.post?.flash ?? 1) > 0;
+    if (themeFlashMax > 0 && sceneFlashOn) {
+      const cams = s.shots.length > 0
+        ? s.shots.map((sh) => ({ bpm: sh.camera.bpm, off: sh.camera.beat_offset, T0: sh.T0, T1: sh.T1 }))
+        : [{ bpm: s.camera.bpm, off: s.camera.beat_offset, T0: s.T0, T1: s.T1 }];
+      const half = 0.5 / fps;
+      for (const cam of cams) {
+        const bpm = cam.bpm ?? 0;
+        if (!(bpm > 0)) continue;
+        const period = 60 / bpm;
+        const kFrom = Math.ceil((cam.T0 + cam.off) / period - 1e-9);
+        const kTo = Math.floor((cam.T1 + cam.off) / period + 1e-9);
+        for (let k = kFrom; k <= kTo; k++) {
+          const Tk = k * period - cam.off;
+          if (Tk < cam.T0 - 1e-9 || Tk > cam.T1 + 1e-9) continue;
+          const tk = TtoT(ir.time.map, Tk);
+          beatSpans.push({ label: 'beat-flash', span: [tk - half, tk + half] });
+        }
+      }
+    }
   });
+  spans.push(...beatSpans);
   return spans;
 }
 
@@ -318,7 +345,7 @@ async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs:
   if (!inputs.frames) throw new Error('transition_spike 需要 FrameProvider（inputs.frames）');
   const windows = denseWindows(ir, scope);
   let hits = 0;
-  const ignored: Record<DesignClass, number> = { 'scene-head': 0, 'shot-transition': 0, 'shot-cut': 0 };
+  const ignored: Record<DesignClass, number> = { 'scene-head': 0, 'shot-transition': 0, 'shot-cut': 0, 'beat-flash': 0 };
   const hitFrames: number[] = [];
   const ignoredFrames: number[] = [];
   const diffs: number[] = [];
@@ -343,11 +370,11 @@ async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs:
     diffs.push(...r.diffs);
     framesAll.push(...w);
   }
-  const ignoredTotal = ignored['scene-head'] + ignored['shot-transition'] + ignored['shot-cut'];
+  const ignoredTotal = ignored['scene-head'] + ignored['shot-transition'] + ignored['shot-cut'] + ignored['beat-flash'];
   const facts = [
     `转场窗口 ${windows.length} 个，命中孤立跳变 ${hits}`,
     ignoredTotal > 0
-      ? `设计内边界另豁免 ${ignoredTotal} 处（幕头装置 ${ignored['scene-head']}｜镜头转场 ${ignored['shot-transition']}｜硬切 ${ignored['shot-cut']}）`
+      ? `设计内边界另豁免 ${ignoredTotal} 处（幕头装置 ${ignored['scene-head']}｜镜头转场 ${ignored['shot-transition']}｜硬切 ${ignored['shot-cut']}｜强拍白闪 ${ignored['beat-flash']}）`
       : null,
   ].filter(Boolean) as string[];
   return {
@@ -355,7 +382,7 @@ async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs:
     agg: { min: 0, max: hits },
     extras: { windows: windows.length, diffs, hitFrames, ignored, ignoredFrames },
     sample: { frames: framesAll },
-    interpretation: hits === 0 ? '无孤立跳变（健康；设计内边界—幕头/镜头转场/硬切—不计）。' : '存在孤立跳变：疑似卡顿/闪回——A 遮罩方向 1-p、B/C/D 位移缩放须收回（ov=1+.15*(1-d)）。',
+    interpretation: hits === 0 ? '无孤立跳变（健康；设计内边界—幕头/镜头转场/硬切/强拍白闪—不计）。' : '存在孤立跳变：疑似卡顿/闪回——A 遮罩方向 1-p、B/C/D 位移缩放须收回（ov=1+.15*(1-d)）。',
     facts,
   };
 }

@@ -163,6 +163,74 @@ export const SYNTH_PARAM_KEYS: Record<string, string[]> = {
   glitch: ['rate', 'blue_freq', 'dur'],
 };
 
+/** 合成器参数值规格（v3 P0-4）：类型+范围——lint 阶段挡住非法值，避免 render 期才炸 */
+export interface SynthParamSpec {
+  type: 'number' | 'number[]';
+  min?: number;
+  max?: number;
+  /** number[] 元素范围 */
+  itemMin?: number;
+  itemMax?: number;
+  note?: string;
+}
+
+export const SYNTH_PARAM_SPECS: Record<string, Record<string, SynthParamSpec>> = {
+  heartbreak: {},
+  rain: {
+    drops_per_sec: { type: 'number', min: 0, max: 200 },
+    bed_gain: { type: 'number', min: 0, max: 4 },
+    dur: { type: 'number', min: 0.05, max: 120 },
+  },
+  piano_motif: {
+    notes: { type: 'number[]', itemMin: 20, itemMax: 4000, note: '频率数组（Hz），如 [220.0, 261.63, 329.63]' },
+    spacing: { type: 'number', min: 0.05, max: 4 },
+    gain: { type: 'number', min: 0, max: 4 },
+    chord: { type: 'number[]', itemMin: 20, itemMax: 4000, note: '频率数组（Hz）' },
+    chord_at: { type: 'number', min: 0, max: 120 },
+    dur: { type: 'number', min: 0.05, max: 120 },
+  },
+  keyboard: {
+    period: { type: 'number', min: 0.02, max: 2 },
+    count: { type: 'number', min: 1, max: 400 },
+    dur: { type: 'number', min: 0.05, max: 120 },
+  },
+  tape: { dur: { type: 'number', min: 0.05, max: 120 } },
+  drone: {
+    freq: { type: 'number', min: 20, max: 2000 },
+    dur: { type: 'number', min: 0.05, max: 120 },
+  },
+  glitch: {
+    rate: { type: 'number', min: 100, max: 48000 },
+    blue_freq: { type: 'number', min: 100, max: 20000 },
+    dur: { type: 'number', min: 0.01, max: 10 },
+  },
+};
+
+/** 校验单个合成器参数值；返回错误消息（含修复提示）或 null（未知键交由 W-SYNTH-001） */
+export function validateSynthParamValue(sfx: string, key: string, value: unknown): string | null {
+  const spec = SYNTH_PARAM_SPECS[sfx]?.[key];
+  if (!spec) return null;
+  if (spec.type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return `${sfx}.${key} 应为数字（当前 ${JSON.stringify(value)}，类型 ${Array.isArray(value) ? 'array' : typeof value}）`;
+    }
+    if ((spec.min !== undefined && value < spec.min) || (spec.max !== undefined && value > spec.max)) {
+      return `${sfx}.${key}=${value} 超出允许范围 ${spec.min ?? '-∞'}..${spec.max ?? '+∞'}`;
+    }
+    return null;
+  }
+  // number[]
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'number' || !Number.isFinite(v))) {
+    return `${sfx}.${key} 应为数字数组${spec.note ? `（${spec.note}）` : ''}——当前 ${JSON.stringify(value)}（提示：单个数字不是数组，需写成 [220.0] 形式）`;
+  }
+  for (const v of value as number[]) {
+    if ((spec.itemMin !== undefined && v < spec.itemMin) || (spec.itemMax !== undefined && v > spec.itemMax)) {
+      return `${sfx}.${key} 的元素 ${v} 超出范围 ${spec.itemMin ?? '-∞'}..${spec.itemMax ?? '+∞'}${spec.note ? `（${spec.note}）` : ''}`;
+    }
+  }
+  return null;
+}
+
 export const SfxEvent = z.object({
   /** 触发时间；clock=output 时为成片秒，clock=render 时为渲染秒（全局 T） */
   at: z.number().min(0),

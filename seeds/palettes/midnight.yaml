@@ -1,0 +1,8 @@
+# Kine 种子色板 — midnight（深蓝夜）
+# 注册：kine library seed  →  引用：theme.palette: library://core/midnight
+name: midnight
+tags: [midnight, blue, night]
+bg: ['#04070f', '#0a0f1e']
+text: '#dfe6f2'
+text_dim: '#8b96ac'
+accent: '#4da3ff'

@@ -64,11 +64,24 @@ function resolveParent(doc: unknown, toks: Tok[], path: string): { parent: unkno
     const tok = toks[i];
     if (tok.t === 'key') {
       if (cur == null || typeof cur !== 'object' || Array.isArray(cur)) {
-        throw err({ code: 'E-TX-004', severity: 'error', message: `patch 路径无效：${path} 在 ${tok.k} 处期望对象` });
+        throw err({
+          code: 'E-TX-004',
+          severity: 'error',
+          message: `patch 路径无效：${path} 在 ${tok.k} 处期望对象`,
+          hints: ['patch 不会自动创建中间对象：请对存在的父对象整体 set，如 set scenes[code].post = { flash: 0.032 }'],
+        });
       }
       cur = (cur as Record<string, unknown>)[tok.k];
       if (cur === undefined) {
-        throw err({ code: 'E-TX-004', severity: 'error', message: `patch 目标不存在：${path} 中字段 ${tok.k} 未定义` });
+        throw err({
+          code: 'E-TX-004',
+          severity: 'error',
+          message: `patch 目标不存在：${path} 中字段 ${tok.k} 未定义`,
+          hints: [
+            'patch 不会自动创建中间对象：请对存在的父对象整体 set，如 set scenes[code].post = { flash: 0.032 }',
+            '或先用空对象占位：set scenes[code].post = {}，再逐字段 set（后一步即可命中）',
+          ],
+        });
       }
     } else {
       if (!Array.isArray(cur)) {
@@ -151,7 +164,15 @@ export function parsePatchExpr(expr: string): PatchOp {
     throw err({ code: 'E-TX-001', severity: 'error', message: `set 缺少 "=" 赋值：${expr}` });
   }
   const path = rest.slice(0, eq).trim();
-  const valueText = rest.slice(eq + 1).trim();
+  let valueText = rest.slice(eq + 1).trim();
+  // v3 P1-2：值为「带引号的数组/对象」时先去引号再解析（否则 YAML 视作字符串——如 "[220.0, 261.63]"）
+  if (
+    valueText.length >= 2 &&
+    ((valueText.startsWith('"') && valueText.endsWith('"')) || (valueText.startsWith("'") && valueText.endsWith("'")))
+  ) {
+    const inner = valueText.slice(1, -1).trim();
+    if (inner.startsWith('[') || inner.startsWith('{')) valueText = inner;
+  }
   return { op, path, value: parseValue(valueText) };
 }
 

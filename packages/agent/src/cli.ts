@@ -60,13 +60,7 @@ function tagList(s: string | undefined): string[] | undefined {
   const tags = s.split(/[\s,]+/).filter(Boolean);
   return tags.length > 0 ? tags : undefined;
 }
-function rangeArg(p: Parsed): [number, number] | undefined {
-  const r = flagStr(p, 'range');
-  if (!r) return undefined;
-  const m = r.match(/^([\d.]+)\s*:\s*([\d.]+)$/);
-  if (!m) return undefined;
-  return [Number(m[1]), Number(m[2])];
-}
+// v3 P0-1：range 一律传原始字符串，由工具内 parseRangeSpec 严格校验（旧 rangeArg 静默吞错已移除）
 
 // ── 各命令参数组装 ───────────────────────────────────────────────────
 function buildArgs(tool: string, p: Parsed): unknown {
@@ -136,7 +130,7 @@ function buildArgs(tool: string, p: Parsed): unknown {
     case 'probe':
       return { at: flagNum(p, 'at'), hash: flagBool(p, 'hash') };
     case 'find':
-      return { query: p.pos.join(' '), scene: flagStr(p, 'scene'), range: rangeArg(p), kind: flagStr(p, 'kind') };
+      return { query: p.pos.join(' '), scene: flagStr(p, 'scene'), range: flagStr(p, 'range'), kind: flagStr(p, 'kind') };
     case 'explain':
       return { path: p.pos[0] ?? '' };
     case 'impact':
@@ -151,7 +145,7 @@ function buildArgs(tool: string, p: Parsed): unknown {
         id: flagStr(p, 'id'),
       };
     case 'measure':
-      return { metric: p.pos[0] ?? '', scene: flagStr(p, 'scene'), at: flagNum(p, 'at'), range: rangeArg(p), expect: flagStr(p, 'expect'), step: flagNum(p, 'step') };
+      return { metric: p.pos[0] ?? '', scene: flagStr(p, 'scene'), at: flagNum(p, 'at'), range: flagStr(p, 'range'), expect: flagStr(p, 'expect'), step: flagNum(p, 'step') };
     case 'audit':
       return { strict: flagBool(p, 'strict'), syntaxOnly: flagBool(p, 'syntax-only'), step: flagNum(p, 'step') };
     case 'check':
@@ -233,6 +227,7 @@ function printHelp(): void {
   lines.push('  · 显式 --dir <工程目录> 最精确；kine projects --forget <片段> 清理登记');
   lines.push('', 'edit 说明：');
   lines.push('  · patch 表达式：set <路径>=<值> / del <路径>；路径支持 scenes[id].layers[id].props.size');
+  lines.push('  · 数组/对象直接写：set scenes[s].layers[l].props.notes=[220.0, 261.63]（带引号的 "[..]"/"{..}" 会自动去引号）');
   lines.push('  · patch 文件：--file <yaml>，格式 [{path, value}] 或 [{path, del: true}]（或 map 简写）');
   lines.push('  · 无 id 的容器用数字下标（scenes[0].layers[1]）；容器歧义时用 --id 显式消歧');
   lines.push('  · 不带 --tx 为干跑（只出 impact/diff 不落盘）；--quote 为必填的用户原话，可复用同一句');
