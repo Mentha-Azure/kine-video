@@ -110,6 +110,10 @@ export const ThemeSpec = z.object({
   accent_secondary: AccentSecondarySpec,
   font: FontSpec,
   post: PostSpec,
+  /** 风格档案层级（v2 M10）：core=旧行为（唯一强调色纪律全量生效）；extended/free 允许 palette 色板 */
+  profile: z.enum(['core', 'extended', 'free']).default('core'),
+  /** 色板引用：'core' 或 library://<id>（仅 profile: extended|free 下生效） */
+  palette: z.string().min(1).optional(),
 });
 
 // ---------------------------------------------------------------- render
@@ -431,7 +435,7 @@ export const KNOWN_KEYS: Record<string, string[]> = {
   'output.audio': ['codec', 'bitrate', 'limit_dbfs'],
   pace: ['segments'],
   'pace.segment': ['id', 'until', 'ratio'],
-  theme: ['bg', 'text', 'text_dim', 'accent', 'accent_secondary', 'font', 'post'],
+  theme: ['bg', 'text', 'text_dim', 'accent', 'accent_secondary', 'font', 'post', 'profile', 'palette'],
   'theme.accent_secondary': ['color', 'max_frames', 'use'],
   'theme.font': ['family', 'scale', 'base'],
   'theme.post': ['vignette', 'scanline', 'flash', 'black_level'],

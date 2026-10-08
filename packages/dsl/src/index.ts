@@ -11,6 +11,8 @@ export * from './patch';
 export * from './lint';
 export * from './rand';
 export * from './camera';
+export * from './library';
+export * from './palette';
 
 import { compile, type CompileResult } from './compile';
 import { loadProject, type LoadedProject } from './load';

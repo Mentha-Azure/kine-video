@@ -7,7 +7,7 @@ import { audioStatsOf, windowLevelsOf, beatsOf, computeBeatDelta, type AudioStat
 import { metricDef } from './definition';
 import { parseExpect, checkExpect } from './expect';
 
-export interface MetricScope { scene?: string; range?: [number, number]; at?: string | number }
+export interface MetricScope { scene?: string; range?: [number, number]; at?: string | number; step?: number }
 
 export interface FrameProvider {
   /** 保证给定帧的 PNG 就绪，返回 frame → png 路径 */
@@ -75,13 +75,14 @@ export function sampleFrames(ir: KineIR, scope: MetricScope | null): { frames: n
   }
   if (scope?.range) {
     const [a, b] = scope.range;
+    const step = scope.step !== undefined && scope.step > 0 ? scope.step : PAIR_STEP_S;
     const frames: number[] = [];
-    for (let t = a; t < b - 1e-9; t += PAIR_STEP_S) {
+    for (let t = a; t < b - 1e-9; t += step) {
       const f = pointAt(map, t).frame;
       if (f >= 0 && f < total && !frames.includes(f)) frames.push(f);
     }
     if (frames.length === 0) frames.push(Math.min(total - 1, pointAt(map, a).frame));
-    return { frames, step: PAIR_STEP_S };
+    return { frames, step };
   }
   // 默认：全片抽样 = 每幕 62% 处
   const frames = ir.time.map.scenes.map((s) => pctFrame(s.frame0, s.frame1, 0.62));
@@ -477,13 +478,15 @@ function displayValue(metric: string, value: number | null): string {
 export async function runAsserts(
   ir: KineIR,
   inputs: MetricInputs,
-  opts: { onlyId?: string } = {},
+  opts: { onlyId?: string; step?: number } = {},
 ): Promise<AssertReport> {
   const cache = new Map<string, MetricResult>();
   const results: AssertResult[] = [];
   for (const entry of ir.assertPlan as AssertPlanEntry[]) {
     if (opts.onlyId && entry.id !== opts.onlyId) continue;
-    const scope = (entry.scope ?? null) as MetricScope | null;
+    const baseScope = (entry.scope ?? null) as MetricScope | null;
+    // 缺陷 #7：采样密度可配置——断言级 step 注入（仅 range 类采样生效）
+    const scope = opts.step && opts.step > 0 ? ({ ...(baseScope ?? {}), step: opts.step } as MetricScope) : baseScope;
     const parsed = parseExpect(entry.expect);
     const key = `${entry.metric}|${JSON.stringify(scope)}`;
     let m: MetricResult;

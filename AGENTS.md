@@ -5,10 +5,10 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 
 ## 接入方式
 
-- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 23 个）。
+- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 29 个）。
   - 不传 `dir` 的工程定位顺序：① 启动目录向上查找 `timeline.yaml`；② 向下扫描（深度 3）唯一命中即用；③ 多个命中取**最近登记**的工程（返回 facts 会注明）；④ 失败报 `E-PROJ-*` 并列候选（`kine.projects` 可查看/清理登记）。
   - 任何工具都可传参数 `dir="<工程目录>"` 覆盖默认目录（`kine.init` 除外——它的 `dir` 是"目标工程目录"语义）；
-  - 资源：`kine://project/info`、`kine://map`、`kine://baseline`。
+  - 资源：`kine://project/info`、`kine://map`、`kine://baseline`、`kine://rules`、`kine://library`、`kine://widgets`、`kine://music`。
   - 注意：MCP 服务器进程常驻；**修改 Kine 源码后需重启服务器**才会加载新代码。
 - **CLI**：`npx kine <command> --dir <工程目录> [--json]`（在 kine 仓库下）；任意目录可用
   `node <kine仓库>/packages/agent/bin/kine.mjs <command> ...`。
@@ -30,6 +30,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 - 方向性决策（改曲速/片长/结构）永远给「数据 + 2-3 个选项」由用户定。
 - 只改用户要求的；其余发现只报告不动手。
 - 交付物只放 `.kine/out/<version>/`；中间资产不外发。
+- 引用库资源用 `library://<id>` 或 `@tag`；被引资产 sha256 参与 specHash——库内容变化下次 compile 即显现。风格改动走 `kine style apply`（事务），创作资源走 `kine forge create → register`。
 
 ## 常用命令速查
 
@@ -46,6 +47,11 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 预览 | `kine preview --at 12 --dur 4` |
 | 出片/终检 | `kine render [--range 0:300 或 0:5s] [--preset ultrafast]` / `kine verify` |
 | 变更历史/回滚 | `kine changelog --since 1d` / `kine rollback tx_20261007_001` |
+| 资源库 | `kine library add <file> --kind music` / `kine library list --kind theme` / `kine library tags` |
+| 音乐库 | `kine music add <file> --name demo` / `kine music fit` |
+| 创作资源 | `kine forge create palette noir --tags noir` → `kine forge register noir` |
+| 应用色板 | `kine style apply --ref library://ai/noir --tx --quote "换配色"` |
+| 规则速查 | `kine rules [W-SYNTH-001]` |
 
 环境：ffmpeg 自动发现（`KINE_FFMPEG` 可覆盖）；浏览器用系统 Edge（`KINE_BROWSER` 可覆盖）；kine-py 走 `py/kine-py/.venv`（`KINE_PYTHON` 可覆盖）。
 

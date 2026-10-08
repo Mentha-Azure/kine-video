@@ -15,6 +15,12 @@ import { toolRender } from './render';
 import { toolVerify } from './verify';
 import { toolChangelog, toolRollback, toolBaseline, toolDiff, toolVersions } from './history';
 import { toolCache } from './cache';
+import { toolLibrary } from './library';
+import { toolMusic } from './music';
+import { toolForge } from './forge';
+import { toolStyle } from './style';
+import { toolWidgets } from './widgets';
+import { toolRules } from './rules';
 
 export type ToolHandler = (ctx: AgentContext, args: any) => Promise<ToolResult>;
 
@@ -32,6 +38,12 @@ export const TOOLS: ToolDef[] = [
   // init 是唯一「无工程上下文」工具（args 传目标目录；相对路径按用户 cwd（ctx.dir）解析）
   { name: 'init', mcp: 'kine.init', title: '初始化工程（模板 mv-mini / blank）', handler: ((ctx: AgentContext, args: { dir?: string; template?: string; force?: boolean }) => toolInit({ ...args, dir: resolve(ctx.dir, args?.dir ?? '.') })) as ToolHandler },
   { name: 'projects', mcp: 'kine.projects', title: '已登记工程列表（--forget 移除；默认 dir 解析依据）', handler: ((ctx: AgentContext, args: { forget?: string }) => toolProjects(args ?? {})) as ToolHandler },
+  { name: 'library', mcp: 'kine.library', title: '资源库（add/list/search/rm/gc/verify/pin/tags）', handler: toolLibrary as ToolHandler },
+  { name: 'music', mcp: 'kine.music', title: '音乐库（add/info/analyze/beats/fit）', handler: toolMusic as ToolHandler },
+  { name: 'forge', mcp: 'kine.forge', title: '创作层（create/save/list/register：模板/色板/预设）', handler: toolForge as ToolHandler },
+  { name: 'style', mcp: 'kine.style', title: '风格档案应用（apply/show：profile+palette 事务化）', handler: toolStyle as ToolHandler },
+  { name: 'widgets', mcp: 'kine.widgets', title: '内置 widget 清单与参数（list/info）', handler: toolWidgets as ToolHandler },
+  { name: 'rules', mcp: 'kine.rules', title: '规则全集（含义/修复建议；kine://rules 资源同源）', handler: toolRules as ToolHandler },
   { name: 'info', mcp: 'kine.info', title: '工程概览（尺寸/时长/specHash/幕/断言）', handler: toolInfo as ToolHandler },
   { name: 'compile', mcp: 'kine.compile', title: '编译 timeline.yaml → IR（可 --write）', handler: toolCompile as ToolHandler },
   { name: 'map', mcp: 'kine.map', title: '时间对照表（--t 秒 / --frame N / 整表）', handler: toolMap as ToolHandler },

@@ -15,6 +15,7 @@ import { latestBaseline } from '@kine/store';
 import { AgentContext } from './context';
 import { ResolveError, resolveTargetDir } from './resolve';
 import { TOOLS, findTool } from './tools';
+import { RULES } from './tools/rules';
 import type { ToolResult } from './types';
 
 interface JsonSchema {
@@ -102,6 +103,7 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
       range: str('时间窗 [t0:t1]（成片秒）'),
       at: num('单点成片秒'),
       expect: str('期望表达式，如 ">= 0.9 %"'),
+      step: num('range 采样步进（秒，默认 0.4；越小越密）'),
     },
     required: ['metric'],
     additionalProperties: false,
@@ -113,7 +115,7 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
   },
   check: {
     type: 'object',
-    properties: { id: str('只跑指定断言 id'), noBaseline: bool('跳过基线对比') },
+    properties: { id: str('只跑指定断言 id'), noBaseline: bool('跳过基线对比'), step: num('range 采样步进（秒，默认 0.4）') },
     additionalProperties: false,
   },
   baseline: {
@@ -170,6 +172,79 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
   versions: { type: 'object', properties: {}, additionalProperties: false },
   doctor: { type: 'object', properties: { fix: bool('自动修复（重编译 IR/清理索引）') }, additionalProperties: false },
   projects: { type: 'object', properties: { forget: str('移除登记（完整路径或路径片段）') }, additionalProperties: false },
+  library: {
+    type: 'object',
+    properties: {
+      action: str('add | list | search | rm | gc | verify | pin | tags'),
+      file: str('素材文件（add 用）'),
+      kind: str('库类：music|image|video|font|theme|palette|layout|blueprint|preset|sfx-preset|music-preset|xf-suite|widget-pack|kit'),
+      name: str('条目标识名（默认取文件名）'),
+      ns: str('命名空间：core|ai|usr（默认 usr）'),
+      tags: str('标签（空格分隔小写 kebab，≤12 字）'),
+      status: str('draft | library'),
+      license: str('许可标识（仅记录）'),
+      source: str('来源说明（仅记录）'),
+      ref: str('引用：library://<id> / @tag / 名称'),
+      query: str('search 关键词'),
+      force: str('rm 已入册条目需 force'),
+      dryRun: str('gc 预演'),
+      as: str('pin 落盘文件名'),
+    },
+    required: ['action'],
+    additionalProperties: false,
+  },
+  music: {
+    type: 'object',
+    properties: {
+      action: str('add | info | analyze | beats | fit'),
+      file: str('音频文件（add 用）'),
+      ref: str('库引用：library://<id> / @tag'),
+      name: str('入库名称'),
+      tags: str('标签（空格分隔）'),
+      ns: str('命名空间：usr|ai'),
+      limit: num('beats 显示条数（默认 32）'),
+    },
+    required: ['action'],
+    additionalProperties: false,
+  },
+  forge: {
+    type: 'object',
+    properties: {
+      action: str('create | save | list | register'),
+      kind: str('theme|palette|layout|blueprint|preset|sfx-preset|music-preset|xf-suite|kit'),
+      name: str('作品名'),
+      ref: str('引用（register/save 用）'),
+      file: str('数据文件（YAML/JSON）'),
+      tags: str('标签（空格分隔）'),
+      ns: str('命名空间：ai|usr（默认 ai）'),
+      visual: bool('register 时跑视觉门槛（黑电平/密度/边缘带）'),
+    },
+    required: ['action'],
+    additionalProperties: false,
+  },
+  style: {
+    type: 'object',
+    properties: {
+      action: str('apply | show'),
+      ref: str('色板引用：library://<id> / @tag / core'),
+      tx: bool('提交事务（需 quote）'),
+      quote: str('用户原话（--tx 必填）'),
+      preview: bool('提交后渲染 4s 预览'),
+    },
+    required: ['action'],
+    additionalProperties: false,
+  },
+  widgets: {
+    type: 'object',
+    properties: { action: str('list | info'), name: str('widget 名（info 用）') },
+    required: ['action'],
+    additionalProperties: false,
+  },
+  rules: {
+    type: 'object',
+    properties: { code: str('过滤指定规则码（如 E-COLOR-003）') },
+    additionalProperties: false,
+  },
 };
 
 // 除 init / projects 外（它们的 dir 语义特殊），每个工具都接受可选 dir 覆盖 server 默认工程目录：
@@ -222,6 +297,10 @@ export async function runMcpServer(dir: string): Promise<void> {
       name !== 'init' && name !== 'projects' && typeof rawArgs.dir === 'string' && rawArgs.dir.trim() !== '';
     const dirOverride = hasDirOverride ? String(rawArgs.dir) : undefined;
     if (hasDirOverride) delete rawArgs.dir;
+    // 兼容 MCP 客户端把 tags 传成字符串的写法（各工具均为 string[]）
+    if (typeof rawArgs.tags === 'string') {
+      rawArgs.tags = rawArgs.tags.split(/[\s,]+/).filter(Boolean);
+    }
     // dir 解析：显式覆盖→仅祖先查找（相对 KINE_CWD）；无覆盖→沿用 server 启动目录做智能发现
     let resolvedDir: { dir: string; note?: string } | undefined;
     if (name !== 'init' && name !== 'projects') {
@@ -283,6 +362,10 @@ export async function runMcpServer(dir: string): Promise<void> {
       { uri: 'kine://project/info', name: 'kine://project/info', description: '工程信息摘要（project.info 的 data）', mimeType: 'application/json' },
       { uri: 'kine://map', name: 'kine://map', description: '时间对照表（timeline.map 的 data）', mimeType: 'application/json' },
       { uri: 'kine://baseline', name: 'kine://baseline', description: '最近一次基线', mimeType: 'application/json' },
+      { uri: 'kine://rules', name: 'kine://rules', description: '全部规则（lint/流程）与修复示例', mimeType: 'application/json' },
+      { uri: 'kine://library', name: 'kine://library', description: '用户资源库条目列表', mimeType: 'application/json' },
+      { uri: 'kine://widgets', name: 'kine://widgets', description: '内置 widget 列表与默认尺寸', mimeType: 'application/json' },
+      { uri: 'kine://music', name: 'kine://music', description: '音乐库条目与最近分析', mimeType: 'application/json' },
     ],
   }));
 
@@ -298,6 +381,17 @@ export async function runMcpServer(dir: string): Promise<void> {
     } else if (uri === 'kine://baseline') {
       const store = baseCtx.store;
       payload = latestBaseline(store.layout.baselineDir) ?? { note: '尚无基线（kine baseline --save 创建）' };
+    } else if (uri === 'kine://rules') {
+      payload = { rules: RULES };
+    } else if (uri === 'kine://library') {
+      const res = await findTool('library')!.handler(baseCtx, { action: 'list' });
+      payload = res.data ?? { entries: [] };
+    } else if (uri === 'kine://widgets') {
+      const res = await findTool('widgets')!.handler(baseCtx, { action: 'list' });
+      payload = res.data;
+    } else if (uri === 'kine://music') {
+      const res = await findTool('library')!.handler(baseCtx, { action: 'list', kind: 'music' });
+      payload = res.data ?? { entries: [] };
     } else {
       throw new Error(`未知资源：${uri}`);
     }

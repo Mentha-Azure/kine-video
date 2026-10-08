@@ -2,6 +2,8 @@
 import type { Issue } from './errors';
 import { KNOWN_KEYS, SYNTH_PARAM_KEYS, type ProjectSpecT } from './schema';
 import type { LineLookup } from './load';
+import { kineHomeDir } from './library';
+import { resolvePalette, type PaletteSpec } from './palette';
 
 export interface LintOptions {
   file: string;
@@ -141,6 +143,17 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
         hints: ['拼写检查；参数表见 py/kine-py/kine_py/synth.py 与 AGENTS.md'],
       });
     }
+    const pgain = ev.params?.gain;
+    if (ev.sfx === 'piano_motif' && typeof pgain === 'number' && pgain > 0.5 + 1e-9) {
+      push({
+        code: 'W-SYNTH-002',
+        severity: 'warn',
+        message: `piano_motif.gain=${pgain} 超过合成器有效上限 0.5（超出部分被内部截断——静默降级）`,
+        where: loc(opts, ['audio', 'sfx', 'events', i, 'params', 'gain']),
+        facts: ['合成器有效区间 0–0.5（上限截断）'],
+        hints: ['要更响请提升事件级 gain（混音层），而不是 params.gain'],
+      });
+    }
   });
 
   // ---- L-POST-001..004 色彩后处理硬上限
@@ -162,20 +175,49 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
   }
   if (post.black_level.rgb_min < 6 || post.black_level.rgb_max > 9) W('W-POST-004', ['theme', 'post', 'black_level'], `黑电平窗口 [${post.black_level.rgb_min}, ${post.black_level.rgb_max}] 超出规范 [6, 9]`, [`当前 [${post.black_level.rgb_min}, ${post.black_level.rgb_max}]`], ['背景 RGB 应在 6–9 之间（防发灰/死黑）']);
 
-  // ---- L-COLOR-001/002 色彩纪律
-  if (spec.theme.accent.toLowerCase() !== '#ff2e3f') {
+  // ---- L-COLOR-001..003 色彩纪律（M10：profile/palette 感知）
+  const profile = spec.theme.profile;
+  if (profile === 'core' && spec.theme.palette !== undefined) {
+    push({
+      code: 'E-COLOR-003', severity: 'error',
+      message: `profile: core 不允许 palette（当前 ${spec.theme.palette}）——色板需 profile: extended 或 free`,
+      where: loc(opts, ['theme', 'palette']),
+      facts: ['core = v1 固定风格（#ff2e3f 唯一强调色）'],
+      hints: ['改为 profile: extended 并保留 palette 引用'],
+    });
+  }
+  let palette: PaletteSpec | null = null;
+  if (spec.theme.palette !== undefined && profile !== 'core') {
+    const pr = resolvePalette(spec.theme.palette, kineHomeDir());
+    if (!pr.ok) {
+      push({
+        code: pr.error.code, severity: 'error',
+        message: `palette "${spec.theme.palette}" 解析失败：${pr.error.message}`,
+        where: loc(opts, ['theme', 'palette']),
+        facts: pr.error.candidates ?? [],
+        hints: ['kine library list --kind palette 查看可用色板'],
+      });
+    } else {
+      palette = pr.palette;
+    }
+  }
+  const expectedAccent = palette ? palette.accent.toLowerCase() : '#ff2e3f';
+  if (spec.theme.accent.toLowerCase() !== expectedAccent) {
     push({
       code: 'E-COLOR-001', severity: 'error',
-      message: `唯一强调色必须为 #ff2e3f，当前 ${spec.theme.accent}`,
+      message: palette
+        ? `extended 模式下强调色必须来自色板（${palette.accent}），当前 ${spec.theme.accent}`
+        : `唯一强调色必须为 #ff2e3f，当前 ${spec.theme.accent}`,
       where: loc(opts, ['theme', 'accent']),
-      hints: ['不允许第二强调色（风格六不做）'],
+      hints: [palette ? '与色板保持一致（layer 颜色也应同源）' : '不允许第二强调色（风格六不做）；或声明 profile: extended + palette'],
     });
   }
   const sec = spec.theme.accent_secondary;
-  if (sec.color.toLowerCase() !== '#4da3ff' || sec.max_frames > 2) {
+  const expectedSec = palette ? palette.accent_secondary : { color: '#4da3ff', max_frames: 2 };
+  if (sec.color.toLowerCase() !== expectedSec.color.toLowerCase() || sec.max_frames > expectedSec.max_frames) {
     push({
       code: 'E-COLOR-001', severity: 'error',
-      message: `第二色只允许 #4da3ff 且仅 glitch 色差 ≤2 帧（当前 ${sec.color} / max_frames=${sec.max_frames}）`,
+      message: `第二色只允许 ${expectedSec.color} 且仅 glitch 色差 ≤${expectedSec.max_frames} 帧（当前 ${sec.color} / max_frames=${sec.max_frames}）`,
       where: loc(opts, ['theme', 'accent_secondary']),
     });
   }

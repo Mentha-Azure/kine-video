@@ -55,6 +55,11 @@ function flagBool(p: Parsed, k: string): boolean {
   if (v === true) return true;
   return v === 'true' || v === '1' || v === 'yes';
 }
+function tagList(s: string | undefined): string[] | undefined {
+  if (s === undefined) return undefined;
+  const tags = s.split(/[\s,]+/).filter(Boolean);
+  return tags.length > 0 ? tags : undefined;
+}
 function rangeArg(p: Parsed): [number, number] | undefined {
   const r = flagStr(p, 'range');
   if (!r) return undefined;
@@ -70,6 +75,57 @@ function buildArgs(tool: string, p: Parsed): unknown {
       return { dir: p.pos[0] ?? '.', template: flagStr(p, 'template') ?? 'mv-mini', force: flagBool(p, 'force') };
     case 'projects':
       return { forget: flagStr(p, 'forget') };
+    case 'library':
+      return {
+        action: p.pos[0] ?? 'list',
+        file: flagStr(p, 'file') ?? (p.pos[0] === 'add' ? p.pos[1] : undefined),
+        kind: flagStr(p, 'kind'),
+        name: flagStr(p, 'name'),
+        ns: flagStr(p, 'ns'),
+        tags: tagList(flagStr(p, 'tags')),
+        status: flagStr(p, 'status'),
+        license: flagStr(p, 'license'),
+        source: flagStr(p, 'source'),
+        ref: flagStr(p, 'ref') ?? p.pos[1],
+        query: p.pos.slice(1).join(' ') || undefined,
+        force: flagBool(p, 'force'),
+        dryRun: flagBool(p, 'dry-run'),
+        as: flagStr(p, 'as'),
+        dir: flagStr(p, 'dir'),
+      };
+    case 'music':
+      return {
+        action: p.pos[0] ?? 'info',
+        file: flagStr(p, 'file') ?? (p.pos[0] === 'add' ? p.pos[1] : undefined),
+        ref: flagStr(p, 'ref') ?? p.pos[1],
+        name: flagStr(p, 'name'),
+        tags: tagList(flagStr(p, 'tags')),
+        ns: flagStr(p, 'ns'),
+        limit: flagNum(p, 'limit'),
+      };
+    case 'forge':
+      return {
+        action: p.pos[0] ?? 'list',
+        kind: flagStr(p, 'kind') ?? p.pos[1],
+        name: flagStr(p, 'name') ?? p.pos[2],
+        ref: flagStr(p, 'ref') ?? (p.pos[0] === 'save' || p.pos[0] === 'register' ? p.pos[1] : undefined),
+        file: flagStr(p, 'file'),
+        tags: tagList(flagStr(p, 'tags')),
+        ns: flagStr(p, 'ns'),
+        visual: flagBool(p, 'visual'),
+      };
+    case 'style':
+      return {
+        action: p.pos[0] ?? 'show',
+        ref: flagStr(p, 'ref') ?? p.pos[1],
+        tx: flagBool(p, 'tx'),
+        quote: flagStr(p, 'quote'),
+        preview: flagBool(p, 'preview'),
+      };
+    case 'widgets':
+      return { action: p.pos[0] ?? 'list', name: flagStr(p, 'name') ?? p.pos[1] };
+    case 'rules':
+      return { code: flagStr(p, 'code') ?? p.pos[0] };
     case 'info':
     case 'versions':
       return {};
@@ -95,11 +151,11 @@ function buildArgs(tool: string, p: Parsed): unknown {
         id: flagStr(p, 'id'),
       };
     case 'measure':
-      return { metric: p.pos[0] ?? '', scene: flagStr(p, 'scene'), at: flagNum(p, 'at'), range: rangeArg(p), expect: flagStr(p, 'expect') };
+      return { metric: p.pos[0] ?? '', scene: flagStr(p, 'scene'), at: flagNum(p, 'at'), range: rangeArg(p), expect: flagStr(p, 'expect'), step: flagNum(p, 'step') };
     case 'audit':
       return { strict: flagBool(p, 'strict'), syntaxOnly: flagBool(p, 'syntax-only'), step: flagNum(p, 'step') };
     case 'check':
-      return { id: flagStr(p, 'id'), noBaseline: flagBool(p, 'no-baseline') };
+      return { id: flagStr(p, 'id'), noBaseline: flagBool(p, 'no-baseline'), step: flagNum(p, 'step') };
     case 'baseline':
       return { save: flagBool(p, 'save'), version: flagStr(p, 'version') };
     case 'diff':

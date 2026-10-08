@@ -10,6 +10,8 @@ export interface MeasureOptions {
   range?: [number, number];
   at?: number | string;
   expect?: string;
+  /** 采样步长覆盖（秒；仅 range 采样生效；默认 0.4）——缺陷 #7：可配置采样密度 */
+  step?: number;
 }
 
 export async function toolMeasure(ctx: AgentContext, opts: MeasureOptions): Promise<ToolResult> {
@@ -43,6 +45,7 @@ export async function toolMeasure(ctx: AgentContext, opts: MeasureOptions): Prom
     scope.range = [a, b];
   }
   if (opts.at !== undefined) scope.at = opts.at;
+  if (opts.step !== undefined && opts.step > 0) scope.step = opts.step;
 
   const frames = makeFrameProvider(ctx, ir, 'measure');
   const mixWav = def.audio === 'mix' || def.audio === 'music' ? await ensureMix(ctx, ir) : null;

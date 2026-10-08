@@ -56,7 +56,7 @@ npx kine preview --at 12 --dur 4 --dir demo
 ## 架构
 
 ```
-Agent 接口层   @kine/agent      CLI ×22 子命令 + MCP server（每工具一个 tool）
+Agent 接口层   @kine/agent      CLI ×29 子命令 + MCP server（每工具一个 tool）
 工程层         @kine/store      工程目录 / 事务(changelog/rollback) / 缓存 / 版本 / 基线 / 锁 / 日志
 编译层         @kine/dsl        timeline.yaml --(zod 校验 + lint)--> IR（含时间对照表 map 与依赖图）
 渲染层         @kine/render     Edge CDP 逐帧抓帧 → ffmpeg image2pipe → .ts 分片 → concat → mux
@@ -81,11 +81,12 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 
 ---
 
-## CLI 工具总表（22 个，与 MCP 工具一一对应）
+## CLI 工具总表（29 个，与 MCP 工具一一对应）
 
 | 命令 | 用途 | 示例 |
 | --- | --- | --- |
 | `init` | 从模板建工程（mv-mini / blank） | `kine init demo --template mv-mini` |
+| `projects` | 已登记工程列表 / `--forget` 移除（默认 dir 解析依据） | `kine projects` |
 | `info` | 工程总览（时长/帧数/幕/音频/断言/版本） | `kine info` |
 | `doctor` | 工程一致性体检（可 `--fix`） | `kine doctor --fix` |
 | `compile` | 编译并输出 specHash / 时间表 / 摘要（`--write-ir` 落盘 IR） | `kine compile` |
@@ -107,13 +108,19 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 | `rollback` | 回滚某事务（备份优先，写新条目） | `kine rollback tx_20261007_001` |
 | `cache` | 缓存状态 / LPU GC（默认上限 20GB） | `kine cache gc --max 20` |
 | `versions` | 版本列表与终版指针 | `kine versions` |
+| `library` | 资源库：add / list / search / tags / rm / gc / verify / pin（内容寻址） | `kine library list --kind music` |
+| `music` | 音乐库：add（转 48k + 分析）/ info / analyze / beats / fit（长度匹配建议） | `kine music add song.wav --name demo` |
+| `forge` | 创作层：create / save / list / register（draft → 验证 → library） | `kine forge create palette noir` |
+| `style` | 风格档案：show / apply（profile + palette 事务化） | `kine style apply --ref library://ai/noir --tx --quote "换色板"` |
+| `widgets` | widget 清单与参数示例 | `kine widgets info bdTerminal` |
+| `rules` | 规则速查：lint 码 → 含义 / 修复示例 | `kine rules W-SYNTH-001` |
 
 通用返回契约：`{ ok, tool, data, verdict, facts[], hints[], nextActions[], error? }`。
 `verdict` 可为 `PASS | FAIL | AMBIGUOUS | NEED_INPUT` —— **AMBIGUOUS 时禁止静默选择**，必须由用户从候选项中指定（`--id`）。
 
 ## MCP 接入
 
-MCP 服务器名 `kine`，工具名与 CLI 一致（`kine.map`、`kine.measure`…），长任务（render/verify/baseline）支持进度通知；资源：`kine://project/info`、`kine://map`、`kine://baseline`。
+MCP 服务器名 `kine`，工具名与 CLI 一致（`kine.map`、`kine.measure`…），长任务（render/verify/baseline）支持进度通知；资源：`kine://project/info`、`kine://map`、`kine://baseline`、`kine://rules`（规则含义与修复）、`kine://library`（资源库）、`kine://widgets`、`kine://music`。
 
 ```json
 {
@@ -164,12 +171,12 @@ kine/
 │  ├─ render/     CDP 抓帧 / ffmpeg 编码 / 分片 / 缓存 / 拼接 / mux
 │  ├─ audio/      音频计划 / 合成 / 混音 / env
 │  ├─ metrics/    像素指标 / 断言引擎 / 相机解析复算
-│  ├─ store/      工程布局 / 事务 / 缓存索引 / 版本 / 基线 / 日志 / 锁 / kine-py 桥
-│  └─ agent/      CLI（bin/kine.mjs）+ MCP server + 22 工具
+│  ├─ store/      工程布局 / 事务 / 缓存索引 / 版本 / 基线 / 日志 / 锁 / 用户资源库 / kine-py 桥
+│  └─ agent/      CLI（bin/kine.mjs）+ MCP server + 29 工具
 ├─ py/kine-py/    Python 侧车（stdio JSON）：synth/mix/env/像素指标
 ├─ examples/mv-mini/   演示工程（含 demo 曲 assets/song.wav）
-├─ fixtures/      6 个回归工程（accel-cut / ambiguous / double-pace / env-flash / hud-clip / pump-tw）
-├─ tests/         vitest 单元测试（时间映射/分片/patch/lint/impact/find/edit/expect）
+├─ fixtures/      7 个回归工程（accel-cut / ambiguous / double-pace / env-flash / hud-clip / pump-tw / short-transition）
+├─ tests/         vitest 单元测试（时间映射/分片/patch/lint/impact/find/edit/expect/metrics-spike）
 └─ tools/         构建与冒烟脚本（build-web / smoke-* / repro-check / check-fixtures …）
 ```
 
@@ -196,10 +203,11 @@ demo/
 
 | 项目 | 状态 |
 | --- | --- |
-| `npx vitest run` | 11 文件 / 45 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归） |
-| 6 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码） |
+| `npx vitest run` | 12 文件 / 48 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类） |
+| 7 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码；short-transition 用于 transition_spike 设计内豁免实测） |
 | M0 五命令验收（mv-mini） | `init`（绝对/相对路径 × blank/mv-mini 模板）· `audit`（语法 0/0、purity 0、运行时全轴扫描 0 错误）· `render`（v0.4，1440 帧全缓存命中，6.8s）· `verify`（帧数/时长/音频/抽检全过，tail-clean 为已解释 WARN）· `preview --at 12 --dur 4`（含音轨成品形态）——全 PASS |
-| MCP 冒烟 | initialize / tools(22) / map / probe / resources 全通过 |
+| MCP 冒烟 | initialize / tools(29) / map / probe / resources(7) 全通过 |
+| v2 冒烟（库/创作/音乐/风格） | `library add/list/tags` · `music add`（BPM≈100 置信度 0.89）· `forge create → register`（自动打 @red）· `style apply` 事务（demo-mv2，audit PASS）——全 PASS |
 | 字节级复现 | `tools/repro-check.ts` 双跑 120 帧 sha256 逐字节一致（534f795a…） |
 | 工程身份确定性 | specHash 位置无关（拷贝工程/换目录哈希一致）；音频-only 改动不失效帧缓存（visualHash 解耦实证） |
 
@@ -225,6 +233,20 @@ demo/
 - 合成器版本 `kine-synth/2`（piano_motif 的 `gain` 旋钮已生效；`keyboard` 用 `count` 控制点击数——写 `clicks` 会在 audit 报 `W-SYNTH-001`）。
 
 **MCP 常驻提示**：MCP 服务器进程常驻，修改 Kine 源码后需重启服务器（OpenCode 中重启服务或重开会话）才会加载新代码。
+
+## v2：资源库与创作层
+
+v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部**可选、有默认值**）：Tier0 铁律（符号/色彩/post 上限、purity、内置转场 15 种）不可动；Tier1 风格档案（`theme.profile: core|extended|free` + `theme.palette`）从注册色板中选配；Tier2 注册扩展（色板 / 主题 / 版式 / SFX 预设 / 蓝图进库需过校验）。默认 `core` 的工程行为与 v1 完全一致。
+
+- **用户资源库**（跨工程）：`~/.local/share/kine/library/`（`KINE_HOME` 可覆盖）；内容寻址（`blobs/<sha256>`）+ `index.json`。
+  - `kine library add <file> --kind music|theme|palette|layout|blueprint|preset|sfx-preset|xf-suite|kit|image|video|font`
+  - `kine library list|search|tags`；`rm|gc|verify`（`verify --dir <工程>` 检查工程引用与库内容漂移）
+  - 工程内引用：`library://<id>`（或 `@tag`）；被引资产 sha256 参与 **specHash 的 assets 子键**——库内容变化在下次 compile 即显现（不静默）。
+- **创作层**：`kine forge create <kind> <name>` 产出 draft（自动骨架，或 `--file` 自备 YAML）→ `kine forge register <name>` 自动验证（结构校验 + 可选 `--visual` 黑电平/密度/边缘带门槛）→ 晋升 `library` 状态并自动打色相标签；验证失败**不阻断**，保持 draft。
+- **音乐库**：`kine music add <file> --name demo`（ffmpeg → 48k 无损 + 分析：时长/峰值/RMS/BPM 与置信度/拍网格）；`kine music info|analyze|beats|fit`——`fit` 比对音乐长度与成片时长，不匹配时给 2–3 个选项（延长终幕 / 提前淡出 / 循环补段；不建议变速）。
+- **风格档案**：`kine style show` 查看当前 profile 与色板解析；`kine style apply --ref library://ai/noir --tx --quote "…"` 走标准事务（impact 保留全部音频节点，自动 audit）。
+- 新 MCP 资源：`kine://rules`（规则含义与修复示例）、`kine://library`、`kine://widgets`、`kine://music`。
+- 哈希兼容：未显式设置 `profile`/`palette` 的旧工程，specHash/visualHash **逐字节不变**（canonical 投影）。
 
 ## 规格文档
 

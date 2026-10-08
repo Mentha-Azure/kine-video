@@ -10,6 +10,8 @@ import { ensureMix, makeFrameProvider } from './util';
 export interface CheckOptions {
   id?: string;
   noBaseline?: boolean;
+  /** 采样步进（秒）：仅 range 类断言采样生效（缺陷 #7） */
+  step?: number;
 }
 
 export async function toolCheck(ctx: AgentContext, opts: CheckOptions = {}): Promise<ToolResult> {
@@ -32,7 +34,7 @@ export async function toolCheck(ctx: AgentContext, opts: CheckOptions = {}): Pro
         musicWav: musicWav ?? undefined,
         artifactsDir: store.layout.kineDir,
       },
-      opts.id ? { onlyId: opts.id } : {}
+      { ...(opts.id ? { onlyId: opts.id } : {}), ...(opts.step && opts.step > 0 ? { step: opts.step } : {}) }
     );
   } catch (e) {
     return fail('check', 'E-CHECK-001', `断言执行失败：${e instanceof Error ? e.message : String(e)}`);

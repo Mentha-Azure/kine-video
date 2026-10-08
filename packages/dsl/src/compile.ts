@@ -9,6 +9,8 @@ import type {
 } from './schema';
 import { TRANSITION_NAMES } from './schema';
 import { buildDeps, type DepEdge, type DepNode } from './deps';
+import { kineHomeDir, parseLibraryRef, resolveLibraryRefLite } from './library';
+import { applyPalette, canonicalTheme, resolvePalette } from './palette';
 
 export const SYNTH_VERSION = 'kine-synth/2';
 
@@ -275,15 +277,42 @@ export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): Com
   const rawAudio = spec.audio;
   let music: AudioPlan['music'] = null;
   if (rawAudio.music) {
-    const abs = isAbsolute(rawAudio.music.file) ? rawAudio.music.file : resolve(projectDir, rawAudio.music.file);
+    // library:// 引用：解析到库 blob（内容寻址；contentHash=条目 sha256）；本地路径照旧
+    let abs: string;
+    let contentHash: string;
+    let exists = true;
+    const libRef = parseLibraryRef(rawAudio.music.file);
+    if (libRef) {
+      const res = resolveLibraryRefLite(rawAudio.music.file, kineHomeDir());
+      if ('error' in res) {
+        issues.push({
+          code: res.error.code,
+          severity: 'error',
+          message: `audio.music.file 库引用解析失败：${res.error.message}`,
+          where: { file: '', path: 'audio.music.file' },
+          hints: ['kine library list --kind music 查看已入库音乐；或改用工程内相对路径'],
+        });
+        abs = '';
+        contentHash = 'unresolved';
+        exists = false;
+      } else {
+        abs = res.file ?? '';
+        contentHash = res.entry.sha256 ?? 'unhashed';
+        exists = Boolean(res.file);
+      }
+    } else {
+      abs = isAbsolute(rawAudio.music.file) ? rawAudio.music.file : resolve(projectDir, rawAudio.music.file);
+      contentHash = hashFile(abs);
+      exists = existsSync(abs);
+    }
     music = {
       file: rawAudio.music.file,
       absPath: abs,
-      exists: existsSync(abs),
+      exists,
       gain: rawAudio.music.gain,
       fadeOut: rawAudio.music.fade_out ?? null,
       cutFrom: rawAudio.music.cut_from ?? null,
-      contentHash: hashFile(abs),
+      contentHash,
     };
   }
   const sfxEvents: SfxEventResolved[] = rawAudio.sfx.events.map((ev, i) => {
@@ -336,8 +365,44 @@ export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): Com
     }))),
   ];
 
+  // ---- 风格档案（theme.profile / theme.palette）：解析 palette → 有效主题
+  let effectiveTheme = spec.theme;
+  if (spec.theme.palette !== undefined && spec.theme.profile !== 'core') {
+    const pr = resolvePalette(spec.theme.palette, kineHomeDir());
+    if (pr.ok) {
+      effectiveTheme = applyPalette(spec.theme, pr.palette);
+    } else {
+      issues.push({
+        code: pr.error.code,
+        severity: 'error',
+        message: `theme.palette 解析失败：${pr.error.message}`,
+        where: { file: '', path: 'theme.palette' },
+        hints: ['kine library list --kind palette 查看已注册色板；或改用内置 "core"'],
+      });
+    }
+  }
+  const hashTheme = canonicalTheme(effectiveTheme);
+
+  // ---- 视觉资产内容哈希（library:// 条目 sha 或本地文件内容；空则不进入哈希输入——旧工程字节级兼容）
+  const assets: { ref: string; sha256: string | null }[] = [];
+  for (const sc of spec.scenes) {
+    for (const layer of sc.layers) {
+      if (layer.kind !== 'image' && layer.kind !== 'video') continue;
+      const src = layer.src;
+      const libRef = parseLibraryRef(src);
+      if (libRef) {
+        const res = resolveLibraryRefLite(src, kineHomeDir());
+        assets.push({ ref: src, sha256: 'error' in res ? null : (res.entry.sha256 ?? null) });
+      } else {
+        const abs = isAbsolute(src) ? src : resolve(projectDir, src);
+        assets.push({ ref: src, sha256: existsSync(abs) ? hashFile(abs) : null });
+      }
+    }
+  }
+  const assetsInput = assets.length > 0 ? assets : undefined;
+
   // ---- hashes
-  const themeHash = hashValue(spec.theme);
+  const themeHash = hashValue(hashTheme);
   const paceHash = hashValue({ duration: spec.output.duration, pace: spec.pace });
   const timePlanHash = hashValue({ duration: spec.output.duration, fps, pace: spec.pace, durs: spec.scenes.map((s) => s.dur) });
   const sfxPlanHash = hashValue({ synth: rawAudio.sfx.synth, synthVersion: SYNTH_VERSION, events: sfxEvents.map((e) => ({ sfx: e.sfx, at: e.at, gain: e.gain, bus: e.bus, params: e.params })), buses: rawAudio.sfx.buses, drone: audioPlan.droneLevels, tailFade: rawAudio.tail_fade });
@@ -357,12 +422,13 @@ export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): Com
     project: spec.project,
     output: spec.output,
     pace: spec.pace,
-    theme: spec.theme,
+    theme: hashTheme,
     render: spec.render,
     scenes,
     audioPlan: hashAudioPlan,
     assertPlan,
     time: { map },
+    ...(assetsInput ? { assets: assetsInput } : {}),
   };
   const specHash = hashValue(irSansHash);
 
@@ -381,6 +447,7 @@ export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): Com
     render: irSansHash.render,
     scenes: visualScenes,
     time: irSansHash.time,
+    ...(assetsInput ? { assets: assetsInput } : {}),
   });
 
   const deps = buildDeps({
@@ -396,7 +463,7 @@ export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): Com
     project: spec.project,
     output: spec.output,
     pace: spec.pace,
-    theme: spec.theme,
+    theme: effectiveTheme,
     render: spec.render,
     scenes,
     audioPlan,

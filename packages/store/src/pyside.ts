@@ -24,18 +24,26 @@ export interface ProtocolMessage {
 
 /** 解析一行协议 JSON；-Infinity/Infinity/NaN（python json.dumps 非标准常量）净化重试；无法解析返回 null */
 export function parseProtocolLine(line: string, diagnostics?: string[]): ProtocolMessage | null {
+  let msg: ProtocolMessage | null = null;
   try {
-    return JSON.parse(line) as ProtocolMessage;
+    msg = JSON.parse(line) as ProtocolMessage;
   } catch {
     try {
       const cleaned = line.replace(/([:,\[\s])(-?Infinity|NaN)\b/g, '$1null');
-      const msg = JSON.parse(cleaned) as ProtocolMessage;
+      msg = JSON.parse(cleaned) as ProtocolMessage;
       diagnostics?.push(`[pyside] 协议行含非标准 JSON 常量（已净化重试）：${line.slice(0, 160)}`);
-      return msg;
     } catch {
+      diagnostics?.push(`[pyside] 协议行无法解析（已丢弃）：${line.slice(0, 160)}`);
       return null;
     }
   }
+  // 形状校验：id(number) + ok(boolean) 是请求-响应匹配的最小契约；不符即丢弃并留诊断（防静默挂死）
+  const m = msg as unknown as { id?: unknown; ok?: unknown };
+  if (!m || typeof m.id !== 'number' || typeof m.ok !== 'boolean') {
+    diagnostics?.push(`[pyside] 协议行形状不合法（缺 number id / boolean ok，已丢弃）：${line.slice(0, 160)}`);
+    return null;
+  }
+  return msg;
 }
 
 export interface PyInfo {
