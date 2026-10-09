@@ -54,6 +54,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 音乐库 | `kine music add <file> --name demo` / `kine music fit` |
 | 创作资源 | `kine forge create palette noir --tags noir` → `kine forge register noir` |
 | 应用色板 | `kine style apply --ref library://ai/noir --tx --quote "换配色"` |
+| 用户控制台 | `pnpm console` → http://127.0.0.1:4747（库浏览 / 音乐上传入库 / 工程与磁盘） |
 | 规则速查 | `kine rules [W-SYNTH-001]` |
 
 环境：ffmpeg 自动发现（`KINE_FFMPEG` 可覆盖）；浏览器用系统 Edge（`KINE_BROWSER` 可覆盖）；kine-py 走 `py/kine-py/.venv`（`KINE_PYTHON` 可覆盖）。

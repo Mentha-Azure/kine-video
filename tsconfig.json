@@ -19,6 +19,7 @@
     "packages/*/src/**/*.ts",
     "tools/**/*.ts",
     "tests/**/*.ts",
+    "console/**/*.ts",
     "vitest.config.ts"
   ]
 }

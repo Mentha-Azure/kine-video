@@ -10,6 +10,7 @@
     "audit": "tsx packages/agent/src/cli.ts audit",
     "render": "tsx packages/agent/src/cli.ts render",
     "verify": "tsx packages/agent/src/cli.ts verify",
+    "console": "tsx console/server.ts",
     "build:web": "tsx tools/build-web.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",

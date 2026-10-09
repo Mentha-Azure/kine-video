@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kine 控制台</title>
+<style>
+  :root {
+    --bg: #060609; --panel: #0b0b12; --panel2: #0e0e17; --line: #1e1e2a;
+    --text: #e8e8ea; --dim: #9a9aa2; --faint: #5a5a64;
+    --accent: #ff2e3f; --accent2: #4da3ff; --ok: #3ddc84; --warn: #ffb224;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.6 Consolas, 'JetBrains Mono', 'Courier New', monospace;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 16px; letter-spacing: 1px; }
+  header h1 b { color: var(--accent); }
+  header .meta { color: var(--dim); font-size: 12px; }
+  header .meta code { color: var(--text); background: var(--panel2); padding: 1px 6px; border-radius: 3px; }
+  button, select, input[type=text] {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { border-color: var(--accent); color: #fff; background: #2a0d12; }
+  button.danger:hover { border-color: var(--accent); color: var(--accent); }
+  input[type=text] { cursor: text; min-width: 160px; }
+  nav { display: flex; gap: 4px; padding: 10px 20px 0; }
+  nav button { border-bottom: none; border-radius: 4px 4px 0 0; color: var(--dim); }
+  nav button.on { color: var(--text); border-color: var(--line); background: var(--panel); }
+  main { padding: 14px 20px 40px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 12px; color: var(--dim); font-weight: normal; letter-spacing: 1px; }
+  .big { font-size: 22px; }
+  .big small { font-size: 12px; color: var(--dim); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; color: var(--dim); font-size: 12px; }
+  .chip b { color: var(--text); font-weight: normal; }
+  .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent2); }
+  .bar i.low { background: var(--accent); }
+  .row {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+    padding: 10px 14px; margin-bottom: 8px;
+  }
+  .row .grow { flex: 1; min-width: 220px; }
+  .row .name { font-size: 14px; }
+  .row .sub { color: var(--dim); font-size: 12px; }
+  .row .sub code { color: var(--text); }
+  .tag { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; color: var(--faint); font-size: 11px; margin-left: 4px; }
+  .tag.hi { color: var(--accent2); }
+  .sw { display: inline-block; width: 16px; height: 16px; border-radius: 3px; border: 1px solid #000; vertical-align: -3px; margin-right: 3px; }
+  .status { font-size: 12px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--accent); }
+  .upload {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    border: 1px dashed var(--line); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .upload input[type=file] { color: var(--dim); }
+  .toast {
+    position: fixed; right: 18px; bottom: 18px; max-width: 560px; max-height: 40vh; overflow: auto;
+    background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent2);
+    border-radius: 6px; padding: 10px 14px; white-space: pre-wrap; display: none; z-index: 9;
+  }
+  .toast.err { border-left-color: var(--accent); }
+  pre.out {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; overflow: auto; max-height: 320px; white-space: pre-wrap; color: var(--dim);
+  }
+  audio { height: 30px; }
+  .muted { color: var(--faint); }
+  h2 { font-size: 13px; color: var(--dim); font-weight: normal; letter-spacing: 1px; margin: 18px 0 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KINE <b>·</b> 控制台 <span class="muted" id="ver"></span></h1>
+  <span class="meta">库根 <code id="libRoot">…</code></span>
+  <span class="meta">刷新 <button id="refresh" title="重新拉取数据">⟳</button></span>
+</header>
+<nav>
+  <button data-tab="overview" class="on">总览</button>
+  <button data-tab="music">音乐库</button>
+  <button data-tab="library">资源库</button>
+  <button data-tab="projects">工程</button>
+</nav>
+<main>
+  <section id="tab-overview"></section>
+
+  <section id="tab-music" hidden>
+    <div class="upload">
+      <input type="file" id="mFile" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" />
+      <input type="text" id="mName" placeholder="条目名（如 深空信号-master）" />
+      <input type="text" id="mTags" placeholder="tags（空格/逗号分隔，可空）" />
+      <button class="primary" id="mGo">上传入库</button>
+      <span class="muted" id="mStatus"></span>
+    </div>
+    <div class="muted">入库 = 转 48k 无损 WAV + 分析（时长/峰值/BPM/拍点）+ 内容寻址存储；引用：<code>library://&lt;id&gt;</code></div>
+    <div id="mList" style="margin-top:12px"></div>
+  </section>
+
+  <section id="tab-library" hidden>
+    <div class="upload" style="border-style:solid">
+      <select id="lKind">
+        <option value="">全部类型</option>
+        <option>music</option><option>palette</option><option>theme</option><option>layout</option>
+        <option>blueprint</option><option>preset</option><option>sfx-preset</option><option>xf-suite</option>
+        <option>kit</option><option>image</option><option>video</option><option>font</option>
+      </select>
+      <input type="text" id="lQ" placeholder="搜索 id / 名称 / tags" />
+      <button id="lGo">筛选</button>
+      <span class="muted" id="lCount"></span>
+    </div>
+    <div id="lList"></div>
+  </section>
+
+  <section id="tab-projects" hidden>
+    <div id="pList"></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { tab: 'overview', overview: null };
+
+function toast(msg, isErr) {
+  const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (isErr ? ' err' : '');
+  t.style.display = 'block'; clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.display = 'none'; }, isErr ? 12000 : 6000);
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({ ok: false, error: { message: '响应不是 JSON' } }));
+  return j;
+}
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtBytes = (n) => n == null ? '—' : n > 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : (n / 1e3).toFixed(0) + ' KB';
+const fmtDur = (s) => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const fmtDate = (iso) => iso ? iso.replace('T', ' ').slice(0, 16) : '—';
+function copyText(txt, btn) {
+  navigator.clipboard.writeText(txt).then(() => {
+    const old = btn.textContent; btn.textContent = '已复制 ✓';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  }).catch(() => toast('复制失败：' + txt, true));
+}
+
+// ---------------- 总览 ----------------
+async function loadOverview() {
+  const j = await api('/api/overview');
+  if (!j.ok) return toast('总览加载失败：' + (j.error?.message ?? ''), true);
+  state.overview = j.data;
+  $('#libRoot').textContent = j.data.libraryRoot;
+  $('#ver').textContent = j.data.version ? '(' + j.data.version + ')' : '';
+  const d = j.data, bk = d.byKind ?? {};
+  const kindChips = Object.entries(bk).map(([k, v]) => `<span class="chip">${esc(k)} <b>${v}</b></span>`).join('') || '<span class="muted">库为空</span>';
+  const disk = (d.disk ?? []).map((x) => `
+    <div class="card">
+      <h3>磁盘 ${esc(x.drive)}</h3>
+      <div class="big">${x.freeGb == null ? '—' : x.freeGb.toFixed(2) + ' <small>GB 可用</small>'}</div>
+      <div class="bar"><i class="${x.freeGb != null && x.freeGb < 2 ? 'low' : ''}" style="width:${x.freeGb && x.totalGb ? Math.max(2, Math.min(100, 100 * x.freeGb / x.totalGb)) : 0}%"></i></div>
+    </div>`).join('');
+  $('#tab-overview').innerHTML = `
+    <div class="grid">
+      <div class="card"><h3>库条目</h3><div class="big">${d.total} <small>条</small></div><div class="chips">${kindChips}</div></div>
+      <div class="card"><h3>工程</h3><div class="big">${(d.projects ?? []).length} <small>个已登记</small></div>
+        <div class="muted" style="margin-top:6px">点「工程」页查看与定位</div></div>
+      <div class="card"><h3>Kine 版本</h3><div class="big">${d.version || '—'}</div>
+        <div class="muted" style="margin-top:6px">KINE_HOME <code>${esc(d.kineHome)}</code></div></div>
+      ${disk}
+    </div>
+    <h2>最近入库</h2>
+    <div id="recent"></div>`;
+  const lib = await api('/api/library');
+  if (lib.ok) {
+    $('#recent').innerHTML = lib.data.entries.slice(0, 6).map((e) => rowHtml(e)).join('') || '<span class="muted">（空）</span>';
+  }
+}
+
+// ---------------- 行渲染 ----------------
+function tagsHtml(tags) { return (tags ?? []).map((t) => `<span class="tag hi">@${esc(t)}</span>`).join(''); }
+function paletteSwatches(data) {
+  if (!data) return '';
+  const c = (v) => `<span class="sw" style="background:${esc(v)}" title="${esc(v)}"></span>`;
+  const sw = [data.bg?.[0], data.bg?.[1], data.text, data.accent, data.accent_secondary?.color].filter(Boolean).map(c).join('');
+  return sw ? ` <span style="margin-left:6px">${sw}</span>` : '';
+}
+function rowHtml(e) {
+  const a = e.analysis ?? {};
+  const isMusic = e.kind === 'music';
+  return `<div class="row" data-id="${esc(e.id)}">
+    <div class="grow">
+      <div class="name">${esc(e.name)} ${e.status === 'draft' ? '<span class="tag">draft</span>' : ''} ${tagsHtml(e.tags)}</div>
+      <div class="sub">
+        <code>library://${esc(e.id)}</code> · ${esc(e.kind)} · v${e.version} · ${fmtBytes(e.size)} · ${fmtDate(e.updated)}
+        ${isMusic && a.duration != null ? ` · ${fmtDur(a.duration)}` : ''}
+        ${isMusic && a.bpm != null ? ` · BPM ${Number(a.bpm).toFixed(1)}${a.bpmConfidence != null ? `（可信度 ${(a.bpmConfidence * 100).toFixed(0)}%）` : ''}` : ''}
+        ${isMusic && a.peakDbfs != null ? ` · 峰值 ${Number(a.peakDbfs).toFixed(1)}dB` : ''}
+        ${paletteSwatches(e.data)}
+      </div>
+    </div>
+    ${isMusic ? `<audio controls preload="none" src="/api/audio?id=${encodeURIComponent(e.id)}"></audio>` : ''}
+    <button data-act="copy" data-ref="library://${esc(e.id)}">复制引用</button>
+    <button class="danger" data-act="del" data-id="${esc(e.id)}" data-name="${esc(e.name)}">删除</button>
+  </div>`;
+}
+
+// ---------------- 音乐库 ----------------
+async function loadMusic() {
+  const j = await api('/api/library?kind=music');
+  if (!j.ok) return toast('音乐库加载失败', true);
+  $('#mList').innerHTML = j.data.entries.map((e) => rowHtml(e)).join('') ||
+    '<span class="muted">音乐库为空——上传一首试试（支持 mp3/flac/wav/m4a…）</span>';
+}
+async function uploadMusic() {
+  const f = $('#mFile').files[0];
+  if (!f) return toast('先选择一个音频文件', true);
+  const name = ($('#mName').value || f.name.replace(/\.[^.]+$/, '')).trim();
+  const tags = $('#mTags').value.trim();
+  const btn = $('#mGo'); btn.disabled = true; $('#mStatus').textContent = `上传中：${f.name}（${fmtBytes(f.size)}）…`;
+  try {
+    const q = new URLSearchParams({ filename: f.name, name, tags });
+    const j = await api('/api/music/add?' + q.toString(), { method: 'POST', body: f });
+    if (j.ok) {
+      $('#mStatus').textContent = '';
+      toast('入库成功 ✓\n' + (j.facts ?? []).join('\n'));
+      $('#mName').value = ''; $('#mTags').value = '';
+      loadMusic(); loadOverview();
+    } else {
+      $('#mStatus').textContent = '';
+      toast('入库失败：' + (j.error?.message ?? '未知错误') + '\n' + (j.facts ?? []).join('\n'), true);
+    }
+  } catch (e) {
+    toast('上传异常：' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------- 资源库 ----------------
+async function loadLibrary() {
+  const kind = $('#lKind').value, q = $('#lQ').value.trim();
+  const j = await api('/api/library?kind=' + encodeURIComponent(kind) + '&q=' + encodeURIComponent(q));
+  if (!j.ok) return toast('资源库加载失败', true);
+  $('#lCount').textContent = `共 ${j.data.total} 条`;
+  $('#lList').innerHTML = j.data.entries.map((e) => rowHtml(e)).join('') || '<span class="muted">（无匹配条目）</span>';
+}
+
+// ---------------- 工程 ----------------
+async function loadProjects() {
+  const j = await api('/api/overview');
+  if (!j.ok) return toast('工程加载失败', true);
+  $('#pList').innerHTML = (j.data.projects ?? []).map((p) => `
+    <div class="row" data-dir="${esc(p.dir)}">
+      <div class="grow">
+        <div class="name"><span class="dot ${p.exists ? 'ok' : 'bad'}"></span>${esc(p.title ?? p.dir.split(/[\\\\/]/).pop())}</div>
+        <div class="sub"><code>${esc(p.dir)}</code> · 最近使用 ${fmtDate(p.lastUsed)}${p.exists ? '' : ' · <span style="color:var(--accent)">timeline.yaml 缺失</span>'}</div>
+      </div>
+      <button data-act="projinfo" data-dir="${esc(p.dir)}">查看 info</button>
+      <button data-act="copy" data-ref="${esc(p.dir)}">复制路径</button>
+    </div>
+    <pre class="out" hidden></pre>`).join('') || '<span class="muted">还没有登记工程（kine init / kine info 会自动登记）</span>';
+}
+
+// ---------------- 事件 ----------------
+document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('main section').forEach((s) => { s.hidden = s.id !== 'tab-' + b.dataset.tab; });
+  state.tab = b.dataset.tab;
+  if (state.tab === 'overview') loadOverview();
+  if (state.tab === 'music') loadMusic();
+  if (state.tab === 'library') loadLibrary();
+  if (state.tab === 'projects') loadProjects();
+}));
+$('#refresh').addEventListener('click', () => {
+  const t = state.tab;
+  if (t === 'overview') loadOverview(); else if (t === 'music') loadMusic();
+  else if (t === 'library') loadLibrary(); else loadProjects();
+});
+$('#mGo').addEventListener('click', uploadMusic);
+$('#mFile').addEventListener('change', () => {
+  if (!$('#mName').value && $('#mFile').files[0]) $('#mName').value = $('#mFile').files[0].name.replace(/\.[^.]+$/, '');
+});
+$('#lGo').addEventListener('click', loadLibrary);
+$('#lQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadLibrary(); });
+
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+  if (act === 'copy') return copyText(btn.dataset.ref, btn);
+  if (act === 'del') {
+    const id = btn.dataset.id;
+    if (!confirm(`删除条目 ${btn.dataset.name}（library://${id}）？\nblob 无其他引用时会一并回收。`)) return;
+    const j = await api('/api/library/remove?id=' + encodeURIComponent(id), { method: 'POST' });
+    if (j.ok) { toast(`已删除 ${id}${j.data.blobRemoved ? '（blob 已回收）' : '（blob 仍被其他条目引用）'}`); loadMusic(); loadLibrary(); }
+    else toast('删除失败：' + (j.error?.message ?? ''), true);
+    return;
+  }
+  if (act === 'projinfo') {
+    const row = btn.closest('.row'); const pre = row.nextElementSibling;
+    pre.hidden = false; pre.textContent = '读取中…';
+    const j = await api('/api/project/info?dir=' + encodeURIComponent(btn.dataset.dir), { method: 'POST' });
+    pre.textContent = (j.facts ?? []).join('\n') || JSON.stringify(j, null, 2);
+    return;
+  }
+});
+
+loadOverview();
+</script>
+</body>
+</html>

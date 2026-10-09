@@ -120,6 +120,19 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 通用返回契约：`{ ok, tool, data, verdict, facts[], hints[], nextActions[], error? }`。
 `verdict` 可为 `PASS | FAIL | AMBIGUOUS | NEED_INPUT` —— **AMBIGUOUS 时禁止静默选择**，必须由用户从候选项中指定（`--id`）。
 
+## 本地控制台（人用 · 简易 UI）
+
+```powershell
+pnpm console          # 或 npx tsx console/server.ts
+# → http://127.0.0.1:4747（仅绑定本机回环；--port 换端口，--no-open 不自动开浏览器）
+```
+
+- **总览**：库条目统计、磁盘剩余（C/D，<2GB 红条警示）、Kine 版本（git hash）、最近入库。
+- **音乐库**：拖入/选择音频 →「上传入库」（复用 `kine music add`：转 48k 无损 + BPM/拍点分析 + 内容寻址去重）；在线试听、复制 `library://` 引用、删除条目（blob 仍被引用时自动保留）。
+- **资源库**：按类型筛选、搜索、色板色块预览、复制引用。
+- **工程**：已登记工程列表（含 timeline.yaml 存活检测）、一键 `kine info`、复制路径。
+- 写操作仅「音乐入库 / 删除条目」两类，全部复用 kine 自身能力；渲染等重操作仍请在 CLI/MCP 执行。
+
 ## MCP 接入
 
 MCP 服务器名 `kine`，工具名与 CLI 一致（`kine.map`、`kine.measure`…），长任务（render/verify/baseline）支持进度通知；资源：`kine://project/info`、`kine://map`、`kine://baseline`、`kine://rules`（规则含义与修复）、`kine://library`（资源库）、`kine://widgets`、`kine://music`。
