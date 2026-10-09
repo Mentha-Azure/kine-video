@@ -5,7 +5,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 
 ## 接入方式
 
-- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 29 个）。
+- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 31 个）。
   - 不传 `dir` 的工程定位顺序：① 启动目录向上查找 `timeline.yaml`；② 向下扫描（深度 3）唯一命中即用；③ 多个命中取**最近登记**的工程（返回 facts 会注明）；④ 失败报 `E-PROJ-*` 并列候选（`kine.projects` 可查看/清理登记）。
   - 任何工具都可传参数 `dir="<工程目录>"` 覆盖默认目录（`kine.init` 除外——它的 `dir` 是"目标工程目录"语义）；
   - 资源：`kine://project/info`、`kine://map`、`kine://baseline`、`kine://rules`、`kine://library`、`kine://widgets`、`kine://music`。
@@ -31,6 +31,8 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 - 只改用户要求的；其余发现只报告不动手。
 - 交付物只放 `.kine/out/<version>/`；中间资产不外发。
 - 引用库资源用 `library://<id>` 或 `@tag`；被引资产 sha256 参与 specHash——库内容变化下次 compile 即显现。风格改动走 `kine style apply`（事务），创作资源走 `kine forge create → register`。
+- 文本实时数值用插值：`content: 'FRAME {frame}'` / `'{t:.2f}'`（支持 `{frame}/{t}/{T}/{lt}`；未知占位符报 W-TEXT-001）。
+- 写操作（`edit`/`rollback`/`style apply`/`render`）请显式 `--dir`：目录来自扫描/登记兜底时会被 `E-PROJ-006` 拒绝（防误改）。
 
 ## 常用命令速查
 
@@ -39,6 +41,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 新建工程 | `kine init <目录> --template mv-mini\|blank` |
 | 时间定位 | `kine map --t 12.5` / `kine map --frame 750` |
 | 画面排查 | `kine probe --at 12.5 --hash` |
+| 布局体检 | `kine layout`（重叠/出画/贴边）；`kine contact --scene code --count 8`（接触表拼图） |
 | 元素定位 | `kine find "标题" [--scene code]` |
 | 旋钮解释 | `kine explain scenes[code].camera.tw` |
 | 影响分析 | `kine impact audio.music.file` |

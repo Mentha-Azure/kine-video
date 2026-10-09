@@ -95,6 +95,27 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
     },
     additionalProperties: false,
   },
+  layout: {
+    type: 'object',
+    properties: {
+      scene: str('仅检查指定幕 id（默认全部幕，每幕采样 4 点）'),
+      at: num('仅检查该成片秒时刻'),
+      strict: bool('任何相交都报（默认只报强重叠 ≥25% 较小盒）'),
+    },
+    additionalProperties: false,
+  },
+  contact: {
+    type: 'object',
+    properties: {
+      scene: str('仅拼该幕（优先于 t0/t1）'),
+      t0: num('区间起点（成片秒，默认 0）'),
+      t1: num('区间终点（成片秒，默认全片）'),
+      count: num('帧数（默认 12，2–36）'),
+      cols: num('列数（默认 4）'),
+      cell: num('单格像素（默认 384）'),
+    },
+    additionalProperties: false,
+  },
   measure: {
     type: 'object',
     properties: {
@@ -259,21 +280,34 @@ function toText(res: ToolResult): string {
 }
 
 // dir 解析结果短期记忆（5s）：避免每次工具调用都做目录扫描；显式/默认分开缓存
-const dirMemo = new Map<string, { t: number; dir: string; note?: string }>();
-function resolveDirMemo(input: string, explicit: boolean): { dir: string; note?: string } {
+import { spawnSync } from 'node:child_process';
+import { kineRepoRoot } from '@kine/store';
+const dirMemo = new Map<string, { t: number; dir: string; note?: string; via?: 'explicit' | 'ancestor' | 'scan' | 'registry' }>();
+function resolveDirMemo(input: string, explicit: boolean): { dir: string; note?: string; via?: 'explicit' | 'ancestor' | 'scan' | 'registry' } {
   const key = `${explicit ? 'E' : 'D'}|${input}`;
   const hit = dirMemo.get(key);
   if (hit && Date.now() - hit.t < 5000) return hit;
   const r = resolveTargetDir(input, { explicit });
-  const val = { t: Date.now(), dir: r.dir, note: r.note };
+  const val = { t: Date.now(), dir: r.dir, note: r.note, via: r.via as 'explicit' | 'ancestor' | 'scan' | 'registry' | undefined };
   dirMemo.set(key, val);
   return val;
 }
 
-export async function runMcpServer(dir: string): Promise<void> {
-  const baseCtx = new AgentContext({ dir, actor: 'mcp', quiet: true });
+/** v4：服务器版本戳（含 git 短哈希，便于确认常驻进程加载的是哪版代码——反馈：改源码后需重启才生效，难确认） */
+function buildStamp(): string {
+  try {
+    const r = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: kineRepoRoot(), encoding: 'utf8', timeout: 3000 });
+    const h = (r.stdout ?? '').trim();
+    return h ? `0.1.0+${h}` : '0.1.0';
+  } catch {
+    return '0.1.0';
+  }
+}
+
+export async function runMcpServer(dir: string, opts: { via?: 'explicit' | 'ancestor' | 'scan' | 'registry' | 'direct' } = {}): Promise<void> {
+  const baseCtx = new AgentContext({ dir, actor: 'mcp', quiet: true, dirSource: opts.via ?? 'direct' });
   const server = new Server(
-    { name: 'kine', version: '0.1.0' },
+    { name: 'kine', version: buildStamp() },
     { capabilities: { tools: {}, resources: {} } },
   );
 
@@ -302,7 +336,7 @@ export async function runMcpServer(dir: string): Promise<void> {
       rawArgs.tags = rawArgs.tags.split(/[\s,]+/).filter(Boolean);
     }
     // dir 解析：显式覆盖→仅祖先查找（相对 KINE_CWD）；无覆盖→沿用 server 启动目录做智能发现
-    let resolvedDir: { dir: string; note?: string } | undefined;
+    let resolvedDir: { dir: string; note?: string; via?: 'explicit' | 'ancestor' | 'scan' | 'registry' } | undefined;
     if (name !== 'init' && name !== 'projects') {
       try {
         resolvedDir = dirOverride !== undefined ? resolveDirMemo(dirOverride, true) : resolveDirMemo(dir, false);
@@ -321,11 +355,12 @@ export async function runMcpServer(dir: string): Promise<void> {
     const callDir = resolvedDir?.dir ?? dir;
     const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta?.progressToken;
     const ctx = progressToken === undefined
-      ? (resolvedDir === undefined ? baseCtx : new AgentContext({ dir: callDir, actor: 'mcp', quiet: true }))
+      ? (resolvedDir === undefined ? baseCtx : new AgentContext({ dir: callDir, actor: 'mcp', quiet: true, dirSource: resolvedDir.via ?? 'direct' }))
       : new AgentContext({
           dir: callDir,
           actor: 'mcp',
           quiet: true,
+          dirSource: resolvedDir?.via ?? 'direct',
           progress: (ev) => {
             void server
               .notification({

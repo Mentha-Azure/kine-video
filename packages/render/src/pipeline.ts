@@ -1,5 +1,5 @@
 // @kine/render — 渲染编排：worker 池、抓帧、编码、缓存、拼接、合流（规格文档04）
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statfsSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import { pointAtFrame, type KineIR } from '@kine/dsl';
 import { short } from '@kine/dsl/hash';
@@ -12,7 +12,7 @@ import {
   startChunkEncoder,
   type EncoderProfile,
 } from './ffmpeg';
-import { atomicWriteFile, chunkCachePath, ensureDir, framePngPath, lookupChunk } from './cache';
+import { atomicWriteFile, chunkCachePath, clearChunkOk, ensureDir, framePngPath, lookupChunk, writeChunkOk } from './cache';
 import type { ChunkRange } from './chunks';
 import { planChunks } from './chunks';
 import { openSession, sleep, staggerDelay, withTimeout, type KineSession } from './browser';
@@ -68,11 +68,14 @@ export type RenderProgress =
   | { phase: 'mux'; audio: string }
   | { phase: 'done'; framesRendered: number; framesCached: number; elapsedMs: number };
 
-/** 从 IR 生成渲染默认选项（workDir = .kine/work/<visualHash8> —— 音频/断言改动不失效帧缓存） */
+/** 从 IR 生成渲染默认选项（workDir = .kine/work/<visualHash8> —— 音频/断言改动不失效帧缓存）
+ *  v4：KINE_WORK_DIR 可重定向工作目录（防 C 盘写满；指向其他盘如 D:\kine-work）。 */
 export function renderDefaults(ir: KineIR, projectDir: string): RenderCommonOptions {
+  const override = process.env.KINE_WORK_DIR?.trim();
+  const base = override ? override : path.join(projectDir, '.kine', 'work');
   return {
     projectDir,
-    workDir: path.join(projectDir, '.kine', 'work', short(ir.hashes.visualHash, 8)),
+    workDir: path.join(base, short(ir.hashes.visualHash, 8)),
     width: ir.output.width,
     height: ir.output.height,
     fps: ir.output.fps,
@@ -84,6 +87,29 @@ export function renderDefaults(ir: KineIR, projectDir: string): RenderCommonOpti
       fr: ir.output.fps,
     },
   };
+}
+
+/** v4：磁盘剩余空间守卫（反馈：写 C 盘，当剩 4.3GB 时渲染脆弱）。<1GB 拒绝，附清理/重定向建议。 */
+export function checkFreeDisk(dir: string): { freeBytes: number } {
+  try {
+    const s = statfsSync(dir);
+    const free = Number(s.bavail) * Number(s.bsize);
+    if (free < 1024 ** 3) {
+      const err = new Error(
+        `磁盘剩余空间不足 1GB（当前 ${(free / 1024 ** 3).toFixed(2)}GB）——渲染中止以免写坏缓存`,
+      ) as Error & { code: string; hints: string[] };
+      err.code = 'E-RENDER-007';
+      err.hints = [
+        '清理旧工作目录：kine cache gc（或手动删 .kine/work 下过期 hash 目录）',
+        '重定向工作目录到其他盘：设置环境变量 KINE_WORK_DIR=D:\\kine-work（v4）',
+      ];
+      throw err;
+    }
+    return { freeBytes: free };
+  } catch (e) {
+    if (e && typeof e === 'object' && (e as { code?: string }).code === 'E-RENDER-007') throw e;
+    return { freeBytes: -1 }; // 探测失败（目录尚未创建等）→ 放行
+  }
 }
 
 export class RenderFrameError extends Error {
@@ -140,6 +166,8 @@ async function captureChunk(
 ): Promise<ChunkArtifact> {
   const t0ms = Date.now();
   const outFile = chunkCachePath(opts.workDir, range, key8);
+  checkFreeDisk(opts.workDir); // v4：磁盘守卫（<1GB → E-RENDER-007）
+  clearChunkOk(outFile); // v4：重写分片前先作废旧完整性凭据（防旧 .ok 匹配到新文件）
   const encoder = startChunkEncoder(opts.profile, outFile);
   const map = ir.time.map;
   const total = range.f1 - range.f0;
@@ -177,6 +205,7 @@ async function captureChunk(
   }
   const st = statSync(outFile);
   if (st.size <= 0) throw new RenderFrameError(range.f0, 0, undefined, new Error(`分片产物为空: ${outFile}`));
+  writeChunkOk(outFile, key8); // v4：size 校验通过才写完整性凭据（截断块不再被误判命中）
   return {
     index: range.index,
     f0: range.f0,

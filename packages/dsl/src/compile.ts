@@ -17,7 +17,7 @@ export const SYNTH_VERSION = 'kine-synth/2';
 /** IR 哈希方案版本：任何改变 IR 规范形式的改动必须 bump（跨版本 specHash 不可比；首次 render 会全量重渲，属预期） */
 export const HASH_SCHEME = 'kine-hash/1';
 /** 渲染行为版本：runtime/widgets 像素输出发生变化的改动必须 bump（帧缓存根键之一） */
-export const RENDER_VERSION = 'kine-render/1';
+export const RENDER_VERSION = 'kine-render/2';
 
 // ---------------------------------------------------------------- types
 export interface CompiledShot {

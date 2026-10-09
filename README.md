@@ -56,7 +56,7 @@ npx kine preview --at 12 --dur 4 --dir demo
 ## 架构
 
 ```
-Agent 接口层   @kine/agent      CLI ×29 子命令 + MCP server（每工具一个 tool）
+Agent 接口层   @kine/agent      CLI ×31 子命令 + MCP server（每工具一个 tool）
 工程层         @kine/store      工程目录 / 事务(changelog/rollback) / 缓存 / 版本 / 基线 / 锁 / 日志
 编译层         @kine/dsl        timeline.yaml --(zod 校验 + lint)--> IR（含时间对照表 map 与依赖图）
 渲染层         @kine/render     Edge CDP 逐帧抓帧 → ffmpeg image2pipe → .ts 分片 → concat → mux
@@ -81,7 +81,7 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 
 ---
 
-## CLI 工具总表（29 个，与 MCP 工具一一对应）
+## CLI 工具总表（31 个，与 MCP 工具一一对应）
 
 | 命令 | 用途 | 示例 |
 | --- | --- | --- |
@@ -92,6 +92,8 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 | `compile` | 编译并输出 specHash / 时间表 / 摘要（`--write-ir` 落盘 IR） | `kine compile` |
 | `map` | 时间对照表：`--t` 秒→帧/幕；`--frame` 反查；无参出全表 | `kine map --t 12.5` |
 | `probe` | 运行时探针：某秒的画面元素/相机/后处理/状态哈希 | `kine probe --at 12` |
+| `layout` | 布局体检：重叠对 / 出画 / 贴边（各幕多点采样；`--strict` 任意重叠） | `kine layout` |
+| `contact` | 接触表：均匀抽帧拼图（PNG），一眼看全片 | `kine contact --scene code --count 8` |
 | `find` | 语义寻址（alias/tags/id/name），歧义时返回 AMBIGUOUS + 候选 | `kine find 标题` |
 | `explain` | 字段解释：定义处行号 / 驱动关系 / 生效公式 / 改动影响 | `kine explain pace.segments[1].ratio` |
 | `impact` | 影响分析：失效节点 / 保留节点 / 预计重渲与重混 | `kine impact output.duration` |
@@ -203,7 +205,7 @@ demo/
 
 | 项目 | 状态 |
 | --- | --- |
-| `npx vitest run` | 13 文件 / 56 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3 守卫：range 严格校验/SFX 参数值/色板门槛） |
+| `npx vitest run` | 14 文件 / 66 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3 守卫：range 严格校验/SFX 参数值/色板门槛、v4 守卫：文本插值/输出折叠/写保护/W-COLOR-004/W-TEXT-001） |
 | 7 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码；short-transition 用于 transition_spike 设计内豁免实测） |
 | M0 五命令验收（mv-mini） | `init`（绝对/相对路径 × blank/mv-mini 模板）· `audit`（语法 0/0、purity 0、运行时全轴扫描 0 错误）· `render`（v0.4，1440 帧全缓存命中，6.8s）· `verify`（帧数/时长/音频/抽检全过，tail-clean 为已解释 WARN）· `preview --at 12 --dur 4`（含音轨成品形态）——全 PASS |
 | MCP 冒烟 | initialize / tools(29) / map / probe / resources(7) 全通过 |
@@ -258,6 +260,20 @@ v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部
 - **SFX 参数值校验**：键名白名单（`W-SYNTH-001`）之外再校验值类型/范围，非法报 `E-SYNTH-001`（如 `notes` 必须是频率数组）。
 - **内置种子**：`kine library seed` 一键注册 10 个官方色板（`core/noir`、`core/midnight`、`core/forest`、`core/wine`、`core/bw-high-contrast`、`core/amber`、`core/ember`、`core/cyan-lab`、`core/violet`、`core/ice`）——幂等（已存在跳过）；引用：`theme.palette: library://core/noir` 或 `kine style apply --ref library://core/noir`。
 - **edit 支持数组/对象值**：`kine edit "set scenes[s].layers[l].props.notes=[220.0, 261.63]" …`（带引号的 `"[..]"`/`"{..}"` 会自动去引号）。
+
+## v4：文本插值、布局体检与静默失效护栏
+
+基于第四轮外测（布局无检查 / 文本静态 / 配置静默失效 / 文档与输出问题）：
+
+- **文本插值（第 N 帧 = f(N) 的文本版）**：text 层 `content` 支持 `{frame}`（帧号）、`{t}` / `{T}` / `{lt}`（秒），可带格式如 `{t:.2f}`；含 `{` 才进入插值（旧工程逐字节不变）。未知占位符报 `W-TEXT-001`（按字面显示）。计数类画面直接写 `content: 'FRAME {frame}'`。
+- **布局体检 `kine layout`**：各幕多点采样（lt 25/50/62/75%）→ 重叠对（交集/较小盒 ≥8%；背景/全屏层除外）、出画（>8px）、贴边（<24px）；强重叠 ≥25% 或出画 → FAIL。配合 **`kine contact`**（均匀抽帧 → 接触表 PNG）快速目检全片。
+- **色板静默覆盖显式化**：palette 生效时，显式写死的 `theme.bg/text/text_dim/accent_secondary` 会被覆盖——现在报 `W-COLOR-004`（facts 附色板实际值）；10 个种子色板补全 `accent_secondary`（`profile: extended` 下不再回退锁死 `#4da3ff`）；`kine library seed` 对内容变化的种子自动刷新（条目版本递增）。
+- **死参数修复**：`bdTerminal.speed` 真实生效（日志滚动速度倍率）；`bdTitle` 默认**左对齐**，新增 `align: left|center|right`。
+- **widget 参数可发现**：`kine widgets info <name>` 给出**视觉描述 + 完整 props 表（类型/默认值/说明/注意）**；未知 props 报 `W-WIDGET-001`（`audit` 阶段拦下）。
+- **写保护 `E-PROJ-006`**：未显式 `--dir` 且目录来自「向下扫描 / 登记表兜底」时，`edit` / `rollback` / `style apply` / `render` 拒绝执行（防误改示例工程）；请显式传 `--dir`。
+- **渲染环境加固**：分片缓存要求 `.ok` 完整性凭据（文件大小复核；中断留下的截断块不再被误判为缓存命中）；磁盘剩余 <1GB 报 `E-RENDER-007`（hints 含 `kine cache gc` 与 **`KINE_WORK_DIR`** 环境变量——支持把工作区重定向出 C 盘）。
+- **输出精简**：`kine edit` 的 diffs / summary / facts 对长值自动折叠（不再整段 `scenes` 重复四遍）；`check` 的断言消息与报告对比例指标补百分数解读（如 `<= 0.6（比例 ≤ 60%）`，0.88% 判 PASS 的依据一眼可见）。
+- **MCP 版本标记**：serverInfo 版本包含 git 短哈希——源码改动并重启后，一眼确认加载的是哪一版。
 
 ## 规格文档
 

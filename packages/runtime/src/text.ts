@@ -15,6 +15,26 @@ const smooth = (x: number) => {
   return c * c * (3 - 2 * c);
 };
 
+// v4：文本插值（确定性；第 N 帧 = f(N)）——支持 {frame} {t} {T} {lt}，可带格式如 {t:.2f}；含 '{' 才进入插值（旧工程零变化）
+export interface TextInterpEnv {
+  frame: number;
+  t: number;
+  T: number;
+  lt: number;
+}
+
+const INTERP_RE = /\{(frame|t|T|lt)(?::\.([0-9])f)?\}/g;
+
+export function interpolateText(content: string, env: TextInterpEnv): string {
+  if (!content.includes('{')) return content;
+  return content.replace(INTERP_RE, (_m, key: string, digits?: string) => {
+    const d = digits === undefined ? 2 : Number(digits);
+    if (key === 'frame') return String(Math.max(0, Math.round(env.frame)));
+    const v = key === 't' ? env.t : key === 'T' ? env.T : env.lt;
+    return v.toFixed(d);
+  });
+}
+
 /**
  * 在局部坐标绘制文本（调用方已 translate 到锚点）。
  * - centerX=true：整块文本在锚点处水平居中（place.anchor=center）
@@ -26,7 +46,7 @@ export function drawTextLayer(
   lt: number,
   theme: ResolvedTheme,
   boxW: number,
-  opts?: { centerX?: boolean },
+  opts?: { centerX?: boolean; frame?: number; t?: number; T?: number },
 ): TextDrawResult {
   const ds = theme.S / 1080;
   const px = (layer.style.size || 1) * theme.fontBase * theme.fontScale * ds * 1.06;
@@ -34,14 +54,20 @@ export function drawTextLayer(
   ctx.textBaseline = 'top';
   const color = layer.style.color ?? theme.text;
 
-  const total = layer.content.length;
+  const content = interpolateText(layer.content, {
+    frame: opts?.frame ?? 0,
+    t: opts?.t ?? 0,
+    T: opts?.T ?? 0,
+    lt,
+  });
+  const total = content.length;
   let visible = total;
   let typing = false;
   if (layer.type_period > 0) {
     visible = Math.min(total, Math.floor(lt / layer.type_period));
     typing = visible < total;
   }
-  const text = layer.content.slice(0, visible);
+  const text = content.slice(0, visible);
 
   const maxW = layer.style.max_width ? layer.style.max_width * ds : boxW;
   const lineH = px * 1.4;

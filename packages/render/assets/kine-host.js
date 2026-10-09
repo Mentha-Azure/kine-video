@@ -187,20 +187,36 @@
   }
 
   // packages/runtime/src/text.ts
+  var INTERP_RE = /\{(frame|t|T|lt)(?::\.([0-9])f)?\}/g;
+  function interpolateText(content, env) {
+    if (!content.includes("{")) return content;
+    return content.replace(INTERP_RE, (_m, key, digits) => {
+      const d = digits === void 0 ? 2 : Number(digits);
+      if (key === "frame") return String(Math.max(0, Math.round(env.frame)));
+      const v = key === "t" ? env.t : key === "T" ? env.T : env.lt;
+      return v.toFixed(d);
+    });
+  }
   function drawTextLayer(ctx, layer, lt, theme, boxW, opts) {
     const ds = theme.S / 1080;
     const px = (layer.style.size || 1) * theme.fontBase * theme.fontScale * ds * 1.06;
     ctx.font = `${layer.style.weight} ${px}px ${theme.font}`;
     ctx.textBaseline = "top";
     const color = layer.style.color ?? theme.text;
-    const total = layer.content.length;
+    const content = interpolateText(layer.content, {
+      frame: opts?.frame ?? 0,
+      t: opts?.t ?? 0,
+      T: opts?.T ?? 0,
+      lt
+    });
+    const total = content.length;
     let visible = total;
     let typing = false;
     if (layer.type_period > 0) {
       visible = Math.min(total, Math.floor(lt / layer.type_period));
       typing = visible < total;
     }
-    const text = layer.content.slice(0, visible);
+    const text = content.slice(0, visible);
     const maxW = layer.style.max_width ? layer.style.max_width * ds : boxW;
     const lineH = px * 1.4;
     const lines = [];
@@ -722,7 +738,7 @@
         ctx.save();
         ctx.translate(layer.place.x * ds, layer.place.y * ds);
         ctx.globalAlpha = alpha;
-        const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX });
+        const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX, frame: v.frame, t: v.t, T: v.T });
         recordBox(
           ctx,
           v.collect,
@@ -845,15 +861,15 @@
       scrACtx.globalAlpha = 1;
       scrACtx.fillStyle = theme.bg[0];
       scrACtx.fillRect(0, 0, W, H);
-      drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, T: prevShot.T1 - 1e-3, W, H });
+      drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, t, T: prevShot.T1 - 1e-3, W, H });
       scrBCtx.setTransform(1, 0, 0, 1, 0, 0);
       scrBCtx.globalAlpha = 1;
       scrBCtx.fillStyle = theme.bg[0];
       scrBCtx.fillRect(0, 0, W, H);
-      drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, T, collect: o.collect, W, H });
+      drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
       drawTransition(ctx, scrA, scrB, transition, theme, W, H);
     } else {
-      drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, T, collect: o.collect, W, H });
+      drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
     }
     const effects = [];
     for (const ef of scene.effects) {
@@ -1075,27 +1091,31 @@
       const sub = String(P(c.props, "sub", ""));
       const size = P(c.props, "size", 44) * c.env.ds;
       const typePeriod = P(c.props, "type_period", 0.05);
+      const align = String(P(c.props, "align", "left"));
       const visible = typePeriod > 0 ? Math.floor(c.t / typePeriod) : text.length;
       const shown = text.slice(0, Math.max(0, visible));
       const done = visible >= text.length;
       ctx.fillStyle = rgba(theme.text, 0.95);
       ctx.font = font(c, size, 700);
       ctx.textBaseline = "top";
-      ctx.fillText(shown + (done ? "" : "\u258D"), 0, 0);
       const tw = ctx.measureText(text).width;
+      const tx = align === "center" ? -tw / 2 : align === "right" ? -tw : 0;
+      ctx.fillText(shown + (done ? "" : "\u258D"), tx, 0);
       if (sub) {
         ctx.font = font(c, size * 0.34, 400);
         ctx.fillStyle = rgba(theme.textDim, 0.85);
-        ctx.fillText(sub, 2, size * 1.3);
+        const subW = ctx.measureText(sub).width;
+        const subX = align === "center" ? tx + (tw - subW) / 2 : align === "right" ? tx + (tw - subW) : 2;
+        ctx.fillText(sub, subX, size * 1.3);
       }
       const p = phase(c.t, P(c.props, "underline_period", 2.6));
       const uw = tw * smooth3(p * 2.2);
       ctx.fillStyle = rgba(theme.accent, 0.85);
-      ctx.fillRect(0, size * 1.12, uw, Math.max(2, size * 0.05));
+      ctx.fillRect(tx, size * 1.12, uw, Math.max(2, size * 0.05));
       if (!done && Math.floor(c.t / 0.4) % 2 === 0) {
         const cw = ctx.measureText(shown).width;
         ctx.fillStyle = rgba(theme.accent, 0.75);
-        ctx.fillRect(cw + size * 0.06, 0, size * 0.52, size * 0.96);
+        ctx.fillRect(tx + cw + size * 0.06, 0, size * 0.52, size * 0.96);
       }
       c.report({ state: done ? "done" : "typing", measure: { chars_visible: Math.min(visible, text.length), chars_total: text.length, underline: +uw.toFixed(1) } });
     }
@@ -1585,9 +1605,9 @@
       const lh = size * 1.5;
       const top = barH + lh * 0.4;
       const vis = Math.min(lines, Math.floor((h - top - barH) / lh));
-      const p = phase(c.t, 6.2);
+      const spd = Math.max(0.05, P(c.props, "speed", 1));
       for (let i = 0; i < vis; i++) {
-        const rowIdx = Math.floor(c.t * 1.15) - (vis - 1 - i);
+        const rowIdx = Math.floor(c.t * 1.15 * spd) - (vis - 1 - i);
         const y = top + i * lh;
         const stage = Math.abs((rowIdx % 60 + 60) % 60);
         let text;
@@ -2367,6 +2387,159 @@
       c.report({ state: morph > 0 ? "morphing" : "hold", measure: { morph: +morph.toFixed(3), from, to } });
     }
   });
+
+  // packages/widgets/src/meta.ts
+  var P2 = (name, type, def, desc) => ({ name, type, default: def, desc });
+  var WIDGET_META = {
+    // ---- bd 族（16）
+    bdBG: {
+      desc: "\u80CC\u666F\u7F51\u683C\uFF1A\u7EC6\u7F51\u683C\u4E0A\u4E00\u6761\u626B\u63CF\u5E26\u5468\u671F\u6027\u626B\u8FC7\uFF0C\u5E26\u5185\u683C\u5B50\u77ED\u6682\u53D8\u4EAE\uFF08\u5927\u9762\u79EF\u6D3B\u80CC\u666F\uFF0C\u9632\u9759\u6001\uFF09",
+      props: [P2("cell", "number", 26, "\u7F51\u683C\u683C\u5B50\u8FB9\u957F\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09"), P2("sweep", "number", 7, "\u626B\u63CF\u5E26\u626B\u8FC7\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdTitle: {
+      desc: "\u5927\u6807\u9898\uFF1A\u9010\u5B57\u6253\u51FA + \u5F3A\u8C03\u8272\u4E0B\u5212\u7EBF\u4ECE\u5DE6\u626B\u8FC7 + \u6253\u5B57\u5149\u6807\u95EA\u70C1\uFF1B\u6253\u5B57\u7ED3\u675F\u4FDD\u6301\u5168\u6807\u9898",
+      note: "\u9ED8\u8BA4\u5DE6\u5BF9\u9F50\uFF08\u5185\u5BB9\u4ECE\u951A\u70B9\u5411\u53F3\u5EF6\u4F38\uFF09\uFF1B\u9700\u8981\u5C45\u4E2D\u8BF7\u8BBE align: center",
+      props: [
+        P2("text", "string", "WORLD.EXECUTE", "\u4E3B\u6807\u9898\u6587\u672C"),
+        P2("sub", "string", "", "\u526F\u6807\u9898\uFF08\u5C0F\u5B57\u53F7\u3001\u5F31\u8272\uFF09"),
+        P2("size", "number", 44, "\u4E3B\u6807\u9898\u5B57\u53F7\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09"),
+        P2("type_period", "number", 0.05, "\u9010\u5B57\u6253\u5B57\u95F4\u9694\uFF08\u79D2\uFF09\uFF1B0=\u7ACB\u5373\u5168\u663E"),
+        P2("underline_period", "number", 2.6, "\u4E0B\u5212\u7EBF\u626B\u63A0\u5468\u671F\uFF08\u79D2\uFF09"),
+        P2("align", "string", "left", "\u6A2A\u5411\u5BF9\u9F50\uFF1Aleft\uFF08\u9ED8\u8BA4\uFF09/ center / right")
+      ]
+    },
+    bdKey: {
+      desc: '\u952E\u4F4D\u884C\uFF1A\u6309\u5B57\u7B26\u5217\u51FA\u952E\u5E3D\uFF0C\u5468\u671F\u6027\u9AD8\u4EAE"\u6309\u4E0B"',
+      props: [P2("keys", "string", "W A S D", "\u952E\u4F4D\u5B57\u7B26\uFF08\u7A7A\u683C\u5206\u9694\uFF09"), P2("period", "number", 0.62, "\u6309\u952E\u9AD8\u4EAE\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdLive: {
+      desc: "LIVE \u6307\u793A\uFF1A\u7EA2\u70B9\u547C\u5438\u95EA\u70C1 + \u8FD0\u884C\u8BA1\u65F6\uFF08mm:ss.cc\uFF09",
+      props: [P2("label", "string", "LIVE", "\u524D\u7F00\u6807\u7B7E\u6587\u672C")]
+    },
+    bdScan: {
+      desc: "\u626B\u63CF\u5668\uFF1A\u9876\u90E8\u6761\u5F62\u7801\u67F1\u72B6\u7801 + \u4E00\u6761\u5F3A\u8C03\u8272\u626B\u63CF\u7EBF\u4E0A\u4E0B\u79FB\u52A8\uFF08\u5E26\u4F59\u8F89\uFF09",
+      props: [P2("period", "number", 2.4, "\u626B\u63CF\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdPulse: {
+      desc: "\u5FC3\u7535\u8109\u51B2\uFF1A\u5168\u5BBD\u6EDA\u52A8\u7684\u5FC3\u7535 QRS \u6CE2\u5F62\uFF08\u5C16\u5CF0 + \u5E73\u7EBF\uFF09",
+      props: [P2("period", "number", 1.05, "\u8109\u51B2\u5468\u671F\uFF08\u79D2\uFF09"), P2("amp", "number", 0.36, "\u632F\u5E45\uFF080-1\uFF09")]
+    },
+    bdBars: {
+      desc: "\u9891\u8C31\u67F1\uFF1A\u591A\u6839\u67F1\u4F53\u5468\u671F\u6027\u8D77\u4F0F + \u5CF0\u503C\u9AD8\u4EAE",
+      props: [P2("bars", "number", 24, "\u67F1\u6570\u91CF"), P2("period", "number", 1.6, "\u8D77\u4F0F\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdRing: {
+      desc: "\u540C\u5FC3\u73AF\u4EEA\u8868\uFF1A\u591A\u5C42\u5706\u5F27\u65CB\u8F6C + \u767E\u5206\u6BD4\u8BFB\u6570\u6446\u52A8",
+      props: [P2("rings", "number", 3, "\u73AF\u6570\u91CF"), P2("period", "number", 3.2, "\u65CB\u8F6C\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdCells: {
+      desc: "\u7F51\u683C\u4EAE\u706D\uFF1Acols\xD7rows \u683C\u5B50\u6309\u786E\u5B9A\u6027\u56FE\u6848\u5468\u671F\u6027\u660E\u706D",
+      props: [P2("cols", "number", 14, "\u5217\u6570"), P2("rows", "number", 8, "\u884C\u6570"), P2("period", "number", 0.85, "\u4EAE\u706D\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdWave: {
+      desc: "\u591A\u9053\u6B63\u5F26\u6CE2\uFF1A\u591A\u6761\u76F8\u4F4D\u79FB\u52A8\u7684\u6CE2\u5F62\u7EBF\uFF08\u53EF\u4F5C\u5730\u5E73\u7EBF/\u4FE1\u53F7\u6CE2\u5F62\uFF09",
+      props: [P2("waves", "number", 3, "\u6CE2\u6570\u91CF"), P2("speed", "number", 0.9, "\u76F8\u4F4D\u79FB\u52A8\u901F\u5EA6")]
+    },
+    bdHex: {
+      desc: "\u5341\u516D\u8FDB\u5236\u8F6C\u50A8\uFF1A\u5B57\u7B26\u6D41\u9010\u884C\u6EDA\u52A8 + \u9AD8\u4EAE\u5217\uFF08\u50CF hex dump\uFF09",
+      props: [P2("lines", "number", 12, "\u53EF\u89C1\u884C\u6570"), P2("speed", "number", 1.4, "\u6EDA\u52A8\u901F\u5EA6")]
+    },
+    bdCursor: {
+      desc: "\u6253\u5B57\u673A\uFF1Atext \u9010\u5B57\u6253\u51FA\u5E76\u5FAA\u73AF + \u5149\u6807\u95EA\u70C1",
+      props: [P2("text", "string", "kine render --range 0:5", "\u6253\u5B57\u6587\u672C"), P2("period", "number", 3.4, "\u5FAA\u73AF\u5468\u671F\uFF08\u79D2\uFF09"), P2("size", "number", 20, "\u5B57\u53F7\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09")]
+    },
+    bdRainDrops: {
+      desc: "\u6570\u5B57\u96E8\uFF1A\u591A\u5217\u5B57\u7B26\u5E26\u5C3E\u8FF9\u4E0B\u843D",
+      props: [P2("drops", "number", 26, "\u96E8\u6EF4\uFF08\u5217\uFF09\u6570\u91CF"), P2("speed", "number", 1, "\u4E0B\u843D\u901F\u5EA6"), P2("size", "number", 13, "\u5B57\u53F7\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09")]
+    },
+    bdFlow: {
+      desc: "\u6D41\u6C34\u7EBF\uFF1A\u8282\u70B9\u7528\u7BAD\u5934\u76F8\u8FDE\uFF0C\u6570\u636E\u5305\u6CBF\u8DEF\u5F84\u79FB\u52A8",
+      props: [P2("nodes", "number", 5, "\u8282\u70B9\u6570\u91CF"), P2("period", "number", 2.8, "\u6570\u636E\u5305\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    bdDial: {
+      desc: "\u4EEA\u8868\u76D8\uFF1A\u523B\u5EA6\u5F27 + \u6307\u9488\u5468\u671F\u6027\u6446\u52A8 + \u8BFB\u6570",
+      props: [P2("period", "number", 3.6, "\u6446\u52A8\u5468\u671F\uFF08\u79D2\uFF09"), P2("segments", "number", 14, "\u523B\u5EA6\u6BB5\u6570")]
+    },
+    bdTerminal: {
+      desc: "\u7EC8\u7AEF\u7A97\u53E3\uFF1A\u6807\u9898\u680F\u7EA2\u70B9 + \u6EDA\u52A8\u65E5\u5FD7\u884C + \u5E95\u90E8\u8FDB\u5EA6\u6761\uFF08\u7A97\u53E3 chrome \u9020\u578B\uFF09",
+      props: [
+        P2("size", "number", 15, "\u5B57\u53F7\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09"),
+        P2("title", "string", "kine \u2014 render", "\u6807\u9898\u680F\u6587\u672C"),
+        P2("lines", "number", 11, "\u53EF\u89C1\u65E5\u5FD7\u884C\u6570"),
+        P2("speed", "number", 1, "\u65E5\u5FD7\u6EDA\u52A8\u901F\u5EA6\u500D\u7387\uFF08v4 \u8D77\u751F\u6548\uFF0C1=\u539F\u901F\uFF09")
+      ]
+    },
+    // ---- draw1 族（9）
+    motes: {
+      desc: "\u6D6E\u5C18\uFF1A\u7F13\u6162\u6F02\u6D6E\u7684\u5C0F\u5149\u70B9\uFF08\u8FDC/\u8FD1\u5C42\u89C6\u5DEE\u7528\uFF09",
+      props: [P2("count", "number", 48, "\u7C92\u5B50\u6570\u91CF"), P2("size", "number", 2.4, "\u5C3A\u5BF8\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09")]
+    },
+    globe: {
+      desc: "\u7EBF\u6846\u5730\u7403\uFF1A\u7ECF\u7EAC\u7EBF\u7403\u4F53\u6301\u7EED\u65CB\u8F6C + \u57CE\u5E02\u4EAE\u70B9\u95EA\u70C1",
+      props: []
+    },
+    tesseract: {
+      desc: "\u56DB\u7EF4\u8D85\u7ACB\u65B9\uFF1A8 \u4E2A\u7ACB\u65B9\u4F53\u9876\u70B9\u65CB\u8F6C\u6295\u5F71\uFF08\u79D1\u5E7B\u611F\u51E0\u4F55\u4F53\uFF09",
+      props: []
+    },
+    heart: {
+      desc: "\u5FC3\u5F62\u7C92\u5B50\uFF1A\u7C92\u5B50\u7EC4\u6210\u7684\u5FC3\u5F62\uFF0C\u5468\u671F\u6027\u53CC\u8DF3\u8109\u51B2",
+      props: [P2("period", "number", 1.15, "\u53CC\u8DF3\u5468\u671F\uFF08\u79D2\uFF09"), P2("points", "number", 220, "\u7C92\u5B50\u6570\uFF08\u2265150 \u4FDD\u8BC1\u53EF\u8FA8\u8BC6\uFF09")]
+    },
+    pcb: {
+      desc: "\u7535\u8DEF\u677F\uFF1A\u66FC\u54C8\u987F\u8D70\u7EBF + \u6CBF\u8D70\u7EBF\u6D41\u52A8\u7684\u8109\u51B2\u5149\u70B9",
+      props: [P2("traces", "number", 10, "\u8D70\u7EBF\u6570\u91CF")]
+    },
+    grid: {
+      desc: "\u900F\u89C6\u5730\u9762\uFF1A\u6A2A\u7EB5\u7EBF\u5411\u5730\u5E73\u7EBF\u6EDA\u52A8\uFF08\u590D\u53E4\u7F51\u683C\u5730\u5E73\u7EBF\uFF09",
+      props: [P2("speed", "number", 0.55, "\u6EDA\u52A8\u901F\u5EA6"), P2("horizon", "number", 0.42, "\u5730\u5E73\u7EBF\u4F4D\u7F6E\uFF080-1\uFF0C\u76F8\u5BF9\u9AD8\u5EA6\uFF09")]
+    },
+    membank: {
+      desc: "\u5185\u5B58\u5B57\u8282\u77E9\u9635\uFF1A\u5B57\u7B26\u7F51\u683C\u6309\u786E\u5B9A\u6027\u8282\u594F\u95EA\u53D8\uFF08\u50CF\u5185\u5B58\u76D1\u89C6\u5668\uFF09",
+      props: [P2("cols", "number", 12, "\u5217\u6570"), P2("rows", "number", 6, "\u884C\u6570"), P2("rate", "number", 3.2, "\u95EA\u53D8\u901F\u7387")]
+    },
+    disk: {
+      desc: "\u78C1\u76D8\u76D8\u9762\uFF1A\u6247\u533A\u73AF + \u78C1\u81C2\u5468\u671F\u626B\u63CF\uFF08\u50CF\u78C1\u76D8\u6D3B\u52A8\u6307\u793A\uFF09",
+      props: []
+    },
+    life: {
+      desc: "\u751F\u547D\u6E38\u620F\uFF1A\u5EB7\u5A01\u89C4\u5219\u786E\u5B9A\u6027\u6F14\u5316\uFF08\u7EC6\u80DE\u81EA\u52A8\u673A\u56FE\u6848\u6D41\u52A8\uFF09",
+      props: [P2("cols", "number", 48, "\u5217\u6570"), P2("rows", "number", 27, "\u884C\u6570"), P2("period", "number", 0.16, "\u6F14\u5316\u6B65\u95F4\u9694\uFF08\u79D2\uFF09")]
+    },
+    // ---- draw2 族（8）
+    classGraph: {
+      desc: "\u7C7B\u56FE\uFF1A\u8282\u70B9\u8FDE\u7EBF + \u6570\u636E\u70B9\u6CBF\u8FB9\u79FB\u52A8",
+      props: [P2("nodes", "number", 5, "\u8282\u70B9\u6570\u91CF")]
+    },
+    symbols: {
+      desc: "\u7B26\u53F7\u7011\u5E03\uFF1A\u6570\u5B57/\u7B26\u53F7\u77E9\u9635\u4E0B\u843D\uFF08\u6570\u5B57\u96E8\u98CE\u683C\uFF09",
+      props: [P2("rate", "number", 8, "\u4E0B\u843D\u901F\u7387"), P2("size", "number", 15, "\u5B57\u53F7\uFF08\u8BBE\u8BA1\u50CF\u7D20\uFF09")]
+    },
+    pipeline: {
+      desc: "\u6784\u5EFA\u6D41\u6C34\u7EBF\uFF1A\u9636\u6BB5\u8282\u70B9\u9010\u4E2A\u70B9\u4EAE + \u8FDE\u63A5\u7EBF\u63A8\u8FDB",
+      props: [P2("stages", "number", 5, "\u9636\u6BB5\u6570\u91CF"), P2("period", "number", 3.2, "\u63A8\u8FDB\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    stars: {
+      desc: "\u661F\u7A7A\uFF1A\u661F\u70B9\u95EA\u70C1 + \u5341\u5B57\u661F\u8292\uFF08\u6DF1\u7A7A\u80CC\u666F\uFF09",
+      props: [P2("count", "number", 130, "\u661F\u70B9\u6570\u91CF"), P2("period", "number", 2.6, "\u95EA\u70C1\u5468\u671F\uFF08\u79D2\uFF09")]
+    },
+    constellations: {
+      desc: "\u661F\u5EA7\uFF1A\u661F\u70B9\u8FD1\u90BB\u8FDE\u7EBF\u7F13\u6162\u6F02\u79FB\uFF08\u661F\u5EA7\u56FE\u98CE\u683C\uFF09",
+      props: [P2("stars", "number", 18, "\u661F\u70B9\u6570\u91CF")]
+    },
+    ash: {
+      desc: "\u7070\u70EC\uFF1A\u9897\u7C92\u7F13\u6162\u4E0A\u5347 + \u660E\u6697\u95EA\u70C1\uFF08\u4F59\u70EC\u6C14\u6C1B\uFF09",
+      props: [P2("count", "number", 60, "\u9897\u7C92\u6570\u91CF")]
+    },
+    telemetry: {
+      desc: "\u9065\u6D4B\u8868\uFF1A\u591A\u884C\u8BFB\u6570 + \u8FF7\u4F60\u66F2\u7EBF\u6EDA\u52A8\uFF08\u76D1\u63A7\u53F0\u98CE\u683C\uFF09",
+      props: [P2("rows", "number", 5, "\u8BFB\u6570\u884C\u6570")]
+    },
+    points: {
+      desc: "\u70B9\u4E91\u5F62\u6001\uFF1A\u7C92\u5B50\u7FA4\u5728\u5706/\u65B9/\u4E09\u89D2/\u5341\u5B57\u5F62\u6001\u95F4\u5468\u671F\u53D8\u6362",
+      props: [P2("count", "number", 180, "\u70B9\u6570"), P2("period", "number", 5.2, "\u5F62\u6001\u53D8\u6362\u5468\u671F\uFF08\u79D2\uFF09")]
+    }
+  };
 
   // packages/widgets/src/index.ts
   function registerAll() {

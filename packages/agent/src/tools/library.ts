@@ -238,17 +238,14 @@ export async function toolLibrary(ctx: AgentContext, args: LibraryArgs): Promise
         });
       }
       const files = readdirSync(seedsDir).filter((f) => f.endsWith('.yaml')).sort();
-      const existing = new Set(listLibraryEntries(root).map((e) => e.id));
+      const existing = new Map(listLibraryEntries(root).map((e) => [e.id, e]));
       const added: string[] = [];
+      const updated: string[] = [];
       const skipped: string[] = [];
       const errors: string[] = [];
       for (const f of files) {
         const name = f.replace(/\.yaml$/, '');
         const id = `core/${name}`;
-        if (existing.has(id)) {
-          skipped.push(id);
-          continue;
-        }
         try {
           const data = parseYamlText(readFileSync(path.join(seedsDir, f), 'utf8')) as Record<string, unknown>;
           if (!data || typeof data !== 'object') throw new Error('YAML 内容为空');
@@ -263,6 +260,12 @@ export async function toolLibrary(ctx: AgentContext, args: LibraryArgs): Promise
           for (const k of ['text', 'text_dim', 'accent']) {
             if (!/^#?[0-9a-fA-F]{6}$/.test(String(data[k] ?? '').trim())) throw new Error(`${k} 颜色非法：${String(data[k])}`);
           }
+          // v4：种子文件更新后刷新已有条目（版本递增）；内容一致才跳过
+          const prev = existing.get(id);
+          if (prev && JSON.stringify(prev.data) === JSON.stringify(data)) {
+            skipped.push(id);
+            continue;
+          }
           await addLibraryEntry(root, {
             name: String(data.name ?? name),
             kind: 'palette',
@@ -273,20 +276,22 @@ export async function toolLibrary(ctx: AgentContext, args: LibraryArgs): Promise
             data,
             source: `seeds/palettes/${f}`,
           });
-          added.push(id);
+          if (prev) updated.push(id);
+          else added.push(id);
         } catch (e) {
           errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
-      return ok(tool, { added, skipped, errors }, {
+      return ok(tool, { added, updated, skipped, errors }, {
         verdict: errors.length > 0 ? 'FAIL' : 'PASS',
         facts: [
-          `种子色板：新增 ${added.length}｜跳过（已存在）${skipped.length}｜失败 ${errors.length}`,
+          `种子色板：新增 ${added.length}｜更新 ${updated.length}｜跳过（内容一致）${skipped.length}｜失败 ${errors.length}`,
           ...added.map((sid) => `+ ${sid} → 引用：theme.palette: library://${sid}`),
+          ...updated.map((sid) => `~ ${sid} → 种子已更新（条目版本递增）`),
           ...errors.map((e2) => `✖ ${e2}`),
         ],
         hints: [
-          added.length > 0 ? '应用：kine style apply --ref library://core/noir --tx --quote "…"' : '全部种子已注册；kine library list --kind palette 查看',
+          added.length + updated.length > 0 ? '应用：kine style apply --ref library://core/noir --tx --quote "…"' : '全部种子已注册且为最新；kine library list --kind palette 查看',
         ],
         nextActions: [{ tool: 'kine.style', args: { action: 'show' } }, { tool: 'kine.library', args: { action: 'list', kind: 'palette' } }],
       });

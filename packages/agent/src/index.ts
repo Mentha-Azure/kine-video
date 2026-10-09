@@ -23,3 +23,4 @@ export { toolStyle } from './tools/style';
 export { toolWidgets } from './tools/widgets';
 export { toolRules, RULES } from './tools/rules';
 export { parseRangeSpec } from './tools/util';
+export { guardWrite, compactValue } from './tools/util';

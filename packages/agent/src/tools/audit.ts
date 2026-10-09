@@ -1,9 +1,10 @@
-// kine.audit —— 三层检查：①DSL schema ②purity lint ③0.25s 步进全轴运行时扫错
+// kine.audit —— 三层检查：①DSL schema ②purity lint ③0.25s 步进全轴运行时扫错（v4：+ widget props 静态检查）
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { TtoT, sceneAtT, type Issue } from '@kine/dsl';
 import { kineRepoRoot } from '@kine/store';
 import { openRenderSession, renderDefaults } from '@kine/render';
+import { WIDGET_META } from '@kine/widgets';
 import type { AgentContext } from '../context';
 import { fail, ok, type ToolResult } from '../types';
 
@@ -85,6 +86,38 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
   const syntaxIssues: Issue[] = [...comp.issues, ...comp.lintIssues];
   const syntaxErrors = syntaxIssues.filter((i) => i.severity === 'error');
 
+  // ---- ①b W-WIDGET-001：widget props 未知键静态检查（对照 @kine/widgets WIDGET_META；反馈：props 只能读源码）
+  const wWidget: Array<{ code: string; message: string; scene: string; layer: string; prop: string; hint: string }> = [];
+  try {
+    const rawScenes = ((comp.loaded.raw as { scenes?: Array<Record<string, unknown>> } | undefined)?.scenes) ?? [];
+    for (const sc of rawScenes) {
+      const sid = String(sc.id ?? '?');
+      const layers = (sc.layers as Array<Record<string, unknown>> | undefined) ?? [];
+      for (const ly of layers) {
+        if (ly.kind !== 'widget') continue;
+        const widget = String(ly.widget ?? '');
+        const meta = WIDGET_META[widget];
+        if (!meta) continue; // 未注册 widget 由运行时（占位框）报出，静态层不重复
+        const props = (ly.props as Record<string, unknown> | undefined) ?? {};
+        const known = new Set(meta.props.map((p) => p.name));
+        for (const k of Object.keys(props)) {
+          if (!known.has(k)) {
+            wWidget.push({
+              code: 'W-WIDGET-001',
+              message: `${widget} 不认识 props.${k}（将被忽略）— scene=${sid} layer=${String(ly.id ?? '?')}`,
+              scene: sid,
+              layer: String(ly.id ?? '?'),
+              prop: k,
+              hint: `kine widgets info ${widget} 查看支持参数：${meta.props.map((p) => p.name).join(' / ') || '（无 props）'}`,
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // 静态扫描失败不阻塞 audit
+  }
+
   // ---- ② purity lint（widget/runtime 源码扫描）
   const purity = scanPurity();
 
@@ -126,7 +159,7 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
 
   const data = {
     verdict: pass ? 'PASS' : 'FAIL',
-    counts: { syntax: syntaxErrors.length, purity: purity.length, runtime: runtimeErrors.length, warnings: warns.length },
+    counts: { syntax: syntaxErrors.length, purity: purity.length, runtime: runtimeErrors.length, warnings: warns.length + wWidget.length },
     syntaxErrors: syntaxErrors.slice(0, 50).map((i) => ({
       code: i.code,
       message: i.message,
@@ -135,7 +168,10 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
     })),
     purity,
     runtimeErrors: runtimeErrors.slice(0, 50),
-    warnings: warns.slice(0, 50).map((i) => ({ code: i.code, message: i.message, where: i.where })),
+    warnings: [
+      ...warns.slice(0, 50).map((i) => ({ code: i.code, message: i.message, where: i.where })),
+      ...wWidget.slice(0, 20).map((w2) => ({ code: w2.code, message: w2.message, where: { scene: w2.scene, layer: w2.layer, prop: w2.prop }, hints: [w2.hint] })),
+    ],
     steps,
     ms,
   };
@@ -146,6 +182,10 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
     opts.syntaxOnly ? '运行时：已跳过（--syntax-only）' : `运行时：${steps} 步全轴扫描，错误 ${runtimeErrors.length}`,
     pass ? `audit PASS（${ms}ms）` : `audit FAIL：共 ${errorCount} 个错误`,
   ];
+  if (wWidget.length > 0) {
+    facts.push(`W-WIDGET-001：${wWidget.length} 个 widget props 未知键（将被静默忽略）`);
+    for (const w2 of wWidget.slice(0, 5)) facts.push(`  ${w2.message} → ${w2.hint}`);
+  }
   for (const e of runtimeErrors.slice(0, 5)) {
     facts.push(`E-RUNTIME @ t=${e.t.toFixed(2)}s scene=${e.scene}: ${e.message}`);
   }

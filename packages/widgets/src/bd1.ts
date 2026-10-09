@@ -65,29 +65,33 @@ registerWidget({
     const sub = String(P(c.props, 'sub', ''));
     const size = P(c.props, 'size', 44) * c.env.ds;
     const typePeriod = P(c.props, 'type_period', 0.05);
+    const align = String(P(c.props, 'align', 'left')); // v4：left（默认）/ center / right——此前固定左对齐易被误认为居中
     const visible = typePeriod > 0 ? Math.floor(c.t / typePeriod) : text.length;
     const shown = text.slice(0, Math.max(0, visible));
     const done = visible >= text.length;
     ctx.fillStyle = rgba(theme.text, 0.95);
     ctx.font = font(c, size, 700);
     ctx.textBaseline = 'top';
-    ctx.fillText(shown + (done ? '' : '▍'), 0, 0);
     const tw = ctx.measureText(text).width;
+    const tx = align === 'center' ? -tw / 2 : align === 'right' ? -tw : 0;
+    ctx.fillText(shown + (done ? '' : '▍'), tx, 0);
     if (sub) {
       ctx.font = font(c, size * 0.34, 400);
       ctx.fillStyle = rgba(theme.textDim, 0.85);
-      ctx.fillText(sub, 2, size * 1.3);
+      const subW = ctx.measureText(sub).width;
+      const subX = align === 'center' ? tx + (tw - subW) / 2 : align === 'right' ? tx + (tw - subW) : 2;
+      ctx.fillText(sub, subX, size * 1.3);
     }
     // 下划线扫掠：t 周期内从左到右
     const p = phase(c.t, P(c.props, 'underline_period', 2.6));
     const uw = tw * smooth(p * 2.2);
     ctx.fillStyle = rgba(theme.accent, 0.85);
-    ctx.fillRect(0, size * 1.12, uw, Math.max(2, size * 0.05));
+    ctx.fillRect(tx, size * 1.12, uw, Math.max(2, size * 0.05));
     // 光标闪烁
     if (!done && Math.floor(c.t / 0.4) % 2 === 0) {
       const cw = ctx.measureText(shown).width;
       ctx.fillStyle = rgba(theme.accent, 0.75);
-      ctx.fillRect(cw + size * 0.06, 0, size * 0.52, size * 0.96);
+      ctx.fillRect(tx + cw + size * 0.06, 0, size * 0.52, size * 0.96);
     }
     c.report({ state: done ? 'done' : 'typing', measure: { chars_visible: Math.min(visible, text.length), chars_total: text.length, underline: +uw.toFixed(1) } });
   },

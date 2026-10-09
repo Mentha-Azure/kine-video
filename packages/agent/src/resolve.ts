@@ -125,6 +125,8 @@ export interface ResolvedDir {
   /** 自动发现/回退时的说明（显式指定时为空） */
   note?: string;
   explicit: boolean;
+  /** v4：目录来源（E-PROJ-006 写保护依据） */
+  via?: 'explicit' | 'ancestor' | 'scan' | 'registry' | 'direct';
 }
 
 function safeFindProjectRoot(dir: string): string | null {
@@ -146,7 +148,7 @@ export function resolveTargetDir(input: string | undefined, opts: { explicit?: b
   if (input !== undefined && input.trim() !== '') {
     const abs = path.resolve(base, input);
     const up = safeFindProjectRoot(abs);
-    if (up) return { dir: up, explicit };
+    if (up) return { dir: up, explicit, via: 'explicit' };
     const where = existsSync(abs) ? `目录不是 Kine 工程（未找到 timeline.yaml）：${abs}` : `目录不存在：${abs}`;
     throw new ResolveError('E-PROJ-002', where, {
       hints: ['传入工程目录（含 timeline.yaml）或工程内文件路径', 'kine projects 查看已登记工程', 'kine init <目录> 新建工程'],
@@ -155,12 +157,12 @@ export function resolveTargetDir(input: string | undefined, opts: { explicit?: b
 
   // ① 向上找
   const up = safeFindProjectRoot(base);
-  if (up) return { dir: up, explicit: false };
+  if (up) return { dir: up, explicit: false, via: 'ancestor' };
 
   // ② 向下扫描
   const found = scanForProjects(base);
   if (found.length === 1) {
-    return { dir: found[0]!, explicit: false, note: `未指定 dir：在工作区（${base}）自动发现工程 ${found[0]}` };
+    return { dir: found[0]!, explicit: false, via: 'scan', note: `未指定 dir：在工作区（${base}）自动发现工程 ${found[0]}` };
   }
   if (found.length > 1) {
     const reg = readRegistry();
@@ -169,6 +171,7 @@ export function resolveTargetDir(input: string | undefined, opts: { explicit?: b
       return {
         dir: recent.dir,
         explicit: false,
+        via: 'scan',
         note: `未指定 dir：工作区发现 ${found.length} 个工程，已选取最近使用的 ${recent.dir}（可用 dir 参数或 kine projects 查看）`,
       };
     }
@@ -182,7 +185,7 @@ export function resolveTargetDir(input: string | undefined, opts: { explicit?: b
   const reg = readRegistry();
   const valid = reg.projects.filter((e) => safeFindProjectRoot(e.dir) !== null);
   if (valid.length === 1) {
-    return { dir: valid[0]!.dir, explicit: false, note: `当前目录无工程：回退到唯一登记工程 ${valid[0]!.dir}` };
+    return { dir: valid[0]!.dir, explicit: false, via: 'registry', note: `当前目录无工程：回退到唯一登记工程 ${valid[0]!.dir}` };
   }
   if (valid.length > 1) {
     throw new ResolveError('E-PROJ-004', '当前目录未发现工程，且登记表中有多个工程，无法自动选择', {

@@ -55,6 +55,11 @@ export const RULES: RuleInfo[] = [
   { code: 'E-SYNTH-001', severity: 'error', scope: 'audio.sfx.events[].params 值', meaning: '合成器参数值类型/范围非法（如 piano_motif.notes 不是频率数组——render 期才会炸）', fix: '按参数规格修正：notes 用频率数组如 [220.0, 261.63, 329.63]；数字参数注意上下限' },
   { code: 'E-AUDIO-MIX-001', severity: 'error', scope: 'render/交付路径音频构建', meaning: '音频构建失败且交付路径为 strict（拒绝无声成片）', fix: '排查 audio 配置（sfx 参数/音乐文件）；或显式 render --no-audio 渲染无声版' },
   { code: 'W-LIB-002', severity: 'warn', scope: 'theme.palette', meaning: 'extended 色板与 core 视觉完全相同（profile 形同虚设——v3 实测同质化根因）', fix: '换差异化色板（kine library list --kind palette）或回到 profile: core' },
+  { code: 'W-COLOR-004', severity: 'warn', scope: 'theme.palette', meaning: 'palette 生效时，timeline 中显式写的 theme.bg/text/text_dim/accent_secondary 会被静默覆盖（改了不生效——v4 反馈）', fix: '改色请改色板条目本身（kine forge save palette <name> --file …），或删除这些显式字段' },
+  { code: 'W-TEXT-001', severity: 'warn', scope: 'text.content', meaning: '文本层含未知占位符（将被按字面显示）——v4 插值支持 {frame} {t} {T} {lt}（可带格式如 {t:.2f}）', fix: '检查拼写；受支持列表：{frame} {t} {T} {lt}' },
+  { code: 'W-WIDGET-001', severity: 'warn', scope: 'widget.props', meaning: 'widget 不认识该 props 键（会被静默忽略——v4：对照 WIDGET_META 静态检查）', fix: 'kine widgets info <widget> 查看支持参数与默认值' },
+  { code: 'E-PROJ-006', severity: 'error', scope: 'dir 解析', meaning: '写入类命令（edit/rollback/style）在「自动解析的工程目录」（向下扫描/登记表回退）上被拒绝执行——防不传 dir 时误改意外工程（v4 反馈）', fix: '显式指定：kine <命令> --dir <工程目录>（MCP 传 dir 参数）' },
+  { code: 'E-RENDER-007', severity: 'error', scope: 'render 磁盘', meaning: '工作盘剩余空间不足 1GB，渲染中止以免写坏缓存（v4 反馈：C 盘收紧时渲染脆弱）', fix: 'kine cache gc 清理旧分片；或设置 KINE_WORK_DIR=D:\\kine-work 重定向工作目录' },
   // ---- 资源库 / 风格
   { code: 'E-LIB-001', severity: 'error', scope: 'library 引用', meaning: 'library:// 引用未找到条目', fix: 'kine library list 查看；或先 kine library add' },
   { code: 'E-LIB-002', severity: 'error', scope: 'library 引用', meaning: '引用歧义（标签/模糊命中多个候选）', fix: '用完整 id 或唯一 @tag 精确引用' },

@@ -316,9 +316,9 @@ registerWidget({
     const lh = size * 1.5;
     const top = barH + lh * 0.4;
     const vis = Math.min(lines, Math.floor((h - top - barH) / lh));
-    const p = phase(c.t, 6.2);
+    const spd = Math.max(0.05, P(c.props, 'speed', 1)); // v4：speed 曾为死参数（源码不读）；现为日志滚动速度倍率（1=原速）
     for (let i = 0; i < vis; i++) {
-      const rowIdx = Math.floor(c.t * 1.15) - (vis - 1 - i);
+      const rowIdx = Math.floor(c.t * 1.15 * spd) - (vis - 1 - i);
       const y = top + i * lh;
       const stage = Math.abs(((rowIdx % 60) + 60) % 60);
       let text: string;

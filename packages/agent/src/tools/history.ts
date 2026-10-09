@@ -11,7 +11,7 @@ import { ensureDir } from '@kine/render';
 import { pointAtFrame, sceneAtT, TtoT } from '@kine/dsl';
 import { ok, fail, type ToolResult } from '../types';
 import type { AgentContext } from '../context';
-import { framesPerScene, ensureMix, makeFrameProvider } from './util';
+import { framesPerScene, ensureMix, guardWrite, makeFrameProvider } from './util';
 import { runMetric } from '@kine/metrics';
 
 const KEYFRAME_PCT = 0.62;
@@ -49,6 +49,8 @@ function truncate(s: string, n: number): string { return s.length > n ? s.slice(
 
 // ── rollback ─────────────────────────────────────────────────────────
 export async function toolRollback(ctx: AgentContext, args: { txId: string }): Promise<ToolResult> {
+  const guard = guardWrite(ctx, 'rollback');
+  if (guard) return guard;
   const store = ctx.store;
   if (!args.txId) return fail('rollback', 'E-TX-006', '缺少 txId', { hints: ['kine rollback tx_20261007_003'] });
   try {

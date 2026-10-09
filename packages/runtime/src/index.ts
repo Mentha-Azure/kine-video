@@ -4,7 +4,7 @@ export { drawFrame, layerOpacity, type DrawFrameOptions, type FrameReport } from
 export { resolveTheme, rgba, hexRgb, mixHex, type ResolvedTheme } from './theme';
 export { registerWidget, getWidget, listWidgets, P, num, str, type WidgetDef, type WidgetDrawCtx, type WidgetEnv, type WidgetProbe } from './widgets-api';
 export { drawParticles, type ParticleCtx } from './particles';
-export { drawTextLayer, type TextDrawResult } from './text';
+export { drawTextLayer, interpolateText, type TextDrawResult, type TextInterpEnv } from './text';
 export { drawFx, type FxArgs } from './effects';
 export { drawTransition, type TransitionView } from './transitions';
 export { drawPost } from './post';

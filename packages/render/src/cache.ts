@@ -1,5 +1,5 @@
 // @kine/render — 缓存键与产物路径（规格文档04 §4.5：所有缓存键含 specHash）
-import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { hashValue, short } from '@kine/dsl/hash';
 import type { EncoderProfile } from './ffmpeg';
@@ -22,7 +22,26 @@ export interface ChunkCacheHit {
   key8: string;
 }
 
-/** 查找分片缓存：workDir/chunk/ 下文件名含 key8 且尺寸>0 即命中 */
+/** 分片完整性凭据（v4）：编码完成且 size 校验通过后写入；命中要求 sidecar 尺寸与文件一致
+ *  ——修复「中断留下的截断块只查 size>0 被误判为缓存命中」。 */
+export function chunkOkPath(file: string): string {
+  return `${file}.ok`;
+}
+
+export function writeChunkOk(file: string, key: string): void {
+  const st = statSync(file);
+  atomicWriteFile(chunkOkPath(file), JSON.stringify({ size: st.size, key }));
+}
+
+export function clearChunkOk(file: string): void {
+  try {
+    unlinkSync(chunkOkPath(file));
+  } catch {
+    /* 不存在即无事 */
+  }
+}
+
+/** 查找分片缓存：workDir/chunk/ 下文件名含 key8、尺寸>0 且 .ok 凭据尺寸一致才命中 */
 export function lookupChunk(workDir: string, visualHash: string, range: ChunkRange, profile: EncoderProfile, surface = 'canvas'): ChunkCacheHit {
   const key = chunkKey(visualHash, range, profile, surface);
   const key8 = short(key, 8);
@@ -31,7 +50,11 @@ export function lookupChunk(workDir: string, visualHash: string, range: ChunkRan
   if (existsSync(file)) {
     try {
       const st = statSync(file);
-      if (st.size > 0) return { hit: true, file, key, key8 };
+      const okFile = chunkOkPath(file);
+      if (st.size > 0 && existsSync(okFile)) {
+        const ok = JSON.parse(readFileSync(okFile, 'utf8')) as { size?: number };
+        if (ok.size === st.size) return { hit: true, file, key, key8 };
+      }
     } catch {
       /* 视为未命中 */
     }

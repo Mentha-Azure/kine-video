@@ -21,6 +21,8 @@ import { toolForge } from './forge';
 import { toolStyle } from './style';
 import { toolWidgets } from './widgets';
 import { toolRules } from './rules';
+import { toolLayout } from './layout';
+import { toolContact } from './contact';
 
 export type ToolHandler = (ctx: AgentContext, args: any) => Promise<ToolResult>;
 
@@ -48,6 +50,8 @@ export const TOOLS: ToolDef[] = [
   { name: 'compile', mcp: 'kine.compile', title: '编译 timeline.yaml → IR（可 --write）', handler: toolCompile as ToolHandler },
   { name: 'map', mcp: 'kine.map', title: '时间对照表（--t 秒 / --frame N / 整表）', handler: toolMap as ToolHandler },
   { name: 'probe', mcp: 'kine.probe', title: '探针：某时刻画面结构（元素/相机/后处理）', handler: toolProbe as ToolHandler },
+  { name: 'layout', mcp: 'kine.layout', title: '布局体检：bbox 重叠/出画/贴边（v4）', handler: toolLayout as ToolHandler },
+  { name: 'contact', mcp: 'kine.contact', title: '接触表：抓帧拼图与时间标注（v4，一屏验收）', handler: toolContact as ToolHandler },
   { name: 'find', mcp: 'kine.find', title: '语义寻址：按名称/标签/alias 定位元素', handler: toolFind as ToolHandler },
   { name: 'explain', mcp: 'kine.explain', title: '解释路径：值/定义处/驱动/有效时间公式', handler: toolExplain as ToolHandler },
   { name: 'impact', mcp: 'kine.impact', title: '影响分析：改动会失效/保留什么', handler: toolImpact as ToolHandler },

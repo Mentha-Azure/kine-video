@@ -502,6 +502,20 @@ function displayValue(metric: string, value: number | null): string {
   return String(value);
 }
 
+/** v4：期望值展示——比例指标补百分数解读（反馈：edge_band 阈值 0.6 无单位，PASS/FAIL 时看不出依据） */
+function displayExpect(metric: string, raw: string): string {
+  try {
+    const p = parseExpect(raw);
+    const ratio = ['density', 'frame_diff', 'static_ratio', 'edge_band'].includes(metric);
+    if (!ratio) return raw;
+    if (p.op === 'in' && p.range) return `${raw}（比例 ${(p.range[0] * 100).toFixed(1)}%–${(p.range[1] * 100).toFixed(1)}%）`;
+    if (typeof p.threshold === 'number') return `${raw}（比例 ${p.op} ${(p.threshold * 100).toFixed(2)}%）`;
+  } catch {
+    /* 解析失败原样展示 */
+  }
+  return raw;
+}
+
 export async function runAsserts(
   ir: KineIR,
   inputs: MetricInputs,
@@ -544,7 +558,7 @@ export async function runAsserts(
       id: entry.id, metric: entry.metric, scope, expect: entry.expect, severity: entry.severity,
       verdict: pass ? 'PASS' : 'FAIL',
       value: v, unit: m.unit, display: displayValue(entry.metric, v),
-      facts: m.facts, message: pass ? '通过' : `未达期望（实测 ${displayValue(entry.metric, v)}，期望 ${entry.expect}）`,
+      facts: m.facts, message: pass ? `通过（实测 ${displayValue(entry.metric, v)}，期望 ${displayExpect(entry.metric, entry.expect)}）` : `未达期望（实测 ${displayValue(entry.metric, v)}，期望 ${displayExpect(entry.metric, entry.expect)}）`,
       sample: { frames: m.sample.frames.slice(0, 24) },
       interpretation: m.interpretation,
     });
@@ -556,7 +570,7 @@ export async function runAsserts(
   const lines = [
     '| 断言 | 指标 | scope | 期望 | 实测 | 判定 |',
     '|---|---|---|---|---|---|',
-    ...results.map((r) => `| ${r.id} | ${r.metric} | ${r.scope ? JSON.stringify(r.scope) : '全片'} | ${r.expect} | ${r.display} | ${r.verdict === 'PASS' ? '✅ PASS' : r.verdict === 'FAIL' ? '❌ FAIL' : '⏭ SKIP'} |`),
+    ...results.map((r) => `| ${r.id} | ${r.metric} | ${r.scope ? JSON.stringify(r.scope) : '全片'} | ${displayExpect(r.metric, r.expect)} | ${r.display} | ${r.verdict === 'PASS' ? '✅ PASS' : r.verdict === 'FAIL' ? '❌ FAIL' : '⏭ SKIP'} |`),
     '',
     `汇总：PASS ${passCount} / FAIL ${failCount} / SKIP ${skipCount}`,
   ];

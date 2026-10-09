@@ -8,7 +8,7 @@ import { commitEdit, stageEdit } from '@kine/store';
 import { renderDefaults, renderPreview } from '@kine/render';
 import type { AgentContext } from '../context';
 import { fail, ok, type ToolResult } from '../types';
-import { ensureMix, impactOf } from './util';
+import { ensureMix, guardWrite, impactOf } from './util';
 
 export interface StyleArgs {
   action: 'apply' | 'show';
@@ -39,6 +39,8 @@ export async function toolStyle(ctx: AgentContext, args: StyleArgs): Promise<Too
   }
 
   // ---- apply
+  const guard = guardWrite(ctx, 'style');
+  if (guard) return guard;
   if (!args.ref) return fail('style', 'E-LIB-021', 'apply 需要 --ref（library://<id> / @tag / core）');
   if (args.tx && !args.quote) return fail('style', 'E-TX-002', '--tx 必须带 --quote（用户原话，逐字记录）');
 

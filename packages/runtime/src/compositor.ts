@@ -84,6 +84,7 @@ interface ViewArgs {
   rng: Rng;
   assets?: FrameAssets;
   frame: number;
+  t: number;
   T: number;
   collect?: (el: ProbeElement) => void;
   W: number;
@@ -203,7 +204,7 @@ function drawLayer(ctx: CanvasRenderingContext2D, layer: LayerSpecT, v: ViewArgs
       ctx.save();
       ctx.translate(layer.place.x * ds, layer.place.y * ds);
       ctx.globalAlpha = alpha;
-      const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX });
+      const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX, frame: v.frame, t: v.t, T: v.T });
       recordBox(
         ctx,
         v.collect,
@@ -329,15 +330,15 @@ export function drawFrame(ctx: CanvasRenderingContext2D, o: DrawFrameOptions): F
     scrACtx.globalAlpha = 1;
     scrACtx.fillStyle = theme.bg[0];
     scrACtx.fillRect(0, 0, W, H);
-    drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, T: prevShot.T1 - 1e-3, W, H });
+    drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, t, T: prevShot.T1 - 1e-3, W, H });
     scrBCtx.setTransform(1, 0, 0, 1, 0, 0);
     scrBCtx.globalAlpha = 1;
     scrBCtx.fillStyle = theme.bg[0];
     scrBCtx.fillRect(0, 0, W, H);
-    drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, T, collect: o.collect, W, H });
+    drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
     drawTransition(ctx, scrA, scrB, transition, theme, W, H);
   } else {
-    drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, T, collect: o.collect, W, H });
+    drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
   }
 
   // 幕级 effects

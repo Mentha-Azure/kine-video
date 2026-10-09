@@ -18,7 +18,7 @@ import {
 import { ensureDir, renderDefaults, renderPreview } from '@kine/render';
 import type { AgentContext } from '../context';
 import { ambiguous, fail, ok, type NextAction, type ToolResult } from '../types';
-import { ensureMix, impactOf } from './util';
+import { compactValue, ensureMix, guardWrite, impactOf } from './util';
 
 export interface EditOptions {
   expr?: string;
@@ -161,8 +161,8 @@ export async function toolEdit(ctx: AgentContext, opts: EditOptions): Promise<To
   const baseData = {
     committed: false as boolean,
     txId: stage.txId,
-    diffs: stage.diffs.map((d) => ({ op: d.op, path: d.path, from: d.from, to: d.to })),
-    summary: stage.summary,
+    diffs: stage.diffs.map((d) => ({ op: d.op, path: d.path, from: compactValue(d.from), to: compactValue(d.to) })),
+    summary: stage.summary.map((s) => (s.length > 140 ? `${s.slice(0, 137)}…` : s)),
     target: stage.target,
     impact,
     specHashBefore: beforeIR.specHash,
@@ -173,7 +173,7 @@ export async function toolEdit(ctx: AgentContext, opts: EditOptions): Promise<To
     return ok('edit', baseData, {
       verdict: 'PASS',
       facts: [
-        `dry-run：${stage.summary.join('；')}`,
+        `dry-run：${stage.summary.length} 项变更——${stage.summary.slice(0, 3).map((s) => (s.length > 100 ? `${s.slice(0, 97)}…` : s)).join('；')}${stage.summary.length > 3 ? `；…另 ${stage.summary.length - 3} 项` : ''}`,
         `失效：${impact.invalidates.length} 个节点（${impact.approx.rerender}）`,
         `保留：${impact.keeps.join(' / ') || '无'}`,
         `预计重渲 ${impact.approx.frames} 帧`,
@@ -183,6 +183,9 @@ export async function toolEdit(ctx: AgentContext, opts: EditOptions): Promise<To
       ],
     });
   }
+
+  const guard = guardWrite(ctx, 'edit');
+  if (guard) return guard;
 
   const commitOpts: CommitOptions = {
     quote,
@@ -234,7 +237,7 @@ export async function toolEdit(ctx: AgentContext, opts: EditOptions): Promise<To
     {
       verdict: 'PASS',
       facts: [
-        `已提交事务 ${stage.txId}：${stage.summary.join('；')}`,
+        `已提交事务 ${stage.txId}：${stage.summary.slice(0, 3).map((s) => (s.length > 100 ? `${s.slice(0, 97)}…` : s)).join('；')}${stage.summary.length > 3 ? `；…另 ${stage.summary.length - 3} 项` : ''}`,
         `changelog 已记录用户原话："${quote}"`,
         previewFile ? `预览已生成：${previewFile}（请播放确认效果）` : '未生成预览（--preview 未开启）',
         `失效：${impact.invalidates.length} 个节点｜保留：${impact.keeps.length} 项`,

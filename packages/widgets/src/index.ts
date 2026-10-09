@@ -6,6 +6,7 @@ import './draw2';
 import { listWidgets, type WidgetDrawCtx, type WidgetDef, type WidgetProbe, type WidgetEnv } from '@kine/runtime';
 
 export { listWidgets };
+export * from './meta';
 export type { WidgetDrawCtx, WidgetDef, WidgetProbe, WidgetEnv };
 
 /** 幂等：文件导入即注册（模块级副作用 = 注册表写入，允许的唯一形式） */

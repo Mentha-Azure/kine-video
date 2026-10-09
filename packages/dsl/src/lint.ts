@@ -209,6 +209,29 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
     if (sameBg && sameAccent && !fontChanged) {
       W('W-LIB-002', ['theme', 'palette'], `色板 "${spec.theme.palette}" 与 core 视觉完全相同（accent/bg 一致且字体未变）——profile: extended 形同虚设`, ['v3 实测：多数 extended 工程 accent 仍 #ff2e3f、字体同 core'], ['换用差异化色板（kine library list --kind palette），或回到 profile: core']);
     }
+    // v4：色板生效时显式写死的 theme 颜色会被静默覆盖（实测「改了不生效、无法排查」）——必须提示
+    const rawTheme = (raw as { theme?: Record<string, unknown> } | undefined)?.theme;
+    if (rawTheme) {
+      const overridden: string[] = [];
+      if (rawTheme.bg !== undefined) {
+        const bgArr = Array.isArray(rawTheme.bg) ? rawTheme.bg.map((x) => String(x).toLowerCase()) : [];
+        if (bgArr.length !== 2 || bgArr[0] !== palette.bg[0].toLowerCase() || bgArr[1] !== palette.bg[1].toLowerCase()) overridden.push('bg');
+      }
+      for (const k of ['text', 'text_dim'] as const) {
+        if (rawTheme[k] !== undefined && String(rawTheme[k]).toLowerCase() !== palette[k].toLowerCase()) overridden.push(k);
+      }
+      const rawSec = rawTheme.accent_secondary as { color?: unknown } | undefined;
+      if (rawSec && rawSec.color !== undefined && String(rawSec.color).toLowerCase() !== palette.accent_secondary.color.toLowerCase()) overridden.push('accent_secondary');
+      if (overridden.length > 0) {
+        W(
+          'W-COLOR-004',
+          ['theme', 'palette'],
+          `palette 生效中：theme.${overridden.join(' / theme.')} 的显式值会被色板覆盖（改了不生效）`,
+          [`色板值：bg=${palette.bg.join('+')} text=${palette.text} text_dim=${palette.text_dim} secondary=${palette.accent_secondary.color}`],
+          ['改色请改色板条目本身（kine forge save palette <name> --file …），或删除这些字段避免误导排查'],
+        );
+      }
+    }
   }
   if (post.vignette.base > 0.20 + 1e-9) W('W-POST-001', ['theme', 'post', 'vignette', 'base'], `暗角 base=${post.vignette.base} 超过硬上限 0.20`, [`当前 ${post.vignette.base}`, '上限 0.20'], ['改为 0.20：k=clamp(.20+tw*.11+beat*.09,0,1)']);
   if (post.vignette.max > 0.90 + 1e-9) W('W-POST-001', ['theme', 'post', 'vignette', 'max'], `暗角 max=${post.vignette.max} 超过 0.90（最外圈）`, [`当前 ${post.vignette.max}`, '上限 0.90'], ['改为 0.90']);
@@ -263,6 +286,21 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
   if (!/mono/i.test(effTheme.font.family)) {
     W('W-FONT-001', ['theme', 'font', 'family'], `字体族 "${spec.theme.font.family}" 未声明等宽字体`, ['全站统一等宽字体'], ['family 应包含 monospace/等宽族名']);
   }
+
+  // ---- W-TEXT-001 文本插值占位符（v4：{frame}/{t}/{T}/{lt}；未知占位符会按字面显示）
+  const INTERP_OK = /^\{(frame|t|T|lt)(?::\.[0-9]f)?\}$/;
+  spec.scenes.forEach((sc, si) => {
+    sc.layers.forEach((ly, li) => {
+      if (ly.kind !== 'text') return;
+      const content = String(ly.content ?? '');
+      if (!content.includes('{')) return;
+      const toks = content.match(/\{[^{}]*\}/g) ?? [];
+      const bad = toks.filter((t2) => !INTERP_OK.test(t2));
+      if (bad.length > 0) {
+        W('W-TEXT-001', ['scenes', si, 'layers', li, 'content'], `未知文本占位符 ${bad.join('、')} 将按字面显示`, ['支持：{frame}（帧号）、{t}/{T}/{lt}（秒，可带格式如 {t:.2f}）'], ['检查拼写；受支持列表：{frame} {t} {T} {lt}']);
+      }
+    });
+  });
 
   // ---- L-CAM-001 摄影机纪律
   spec.scenes.forEach((sc, si) => {

@@ -6,3 +6,4 @@ bg: ['#04070f', '#0a0f1e']
 text: '#dfe6f2'
 text_dim: '#8b96ac'
 accent: '#4da3ff'
+accent_secondary: { color: '#7fb8ff', max_frames: 2, use: glitch }

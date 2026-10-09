@@ -21,10 +21,13 @@ export interface AgentContextOptions {
   quiet?: boolean;
   progress?: (ev: { phase: string; message: string; pct?: number }) => void;
   log?: boolean;
+  /** v4 E-PROJ-006 写保护：目录来源（explicit=显式；ancestor=祖先命中；scan=向下扫描；registry=登记表回退；direct=内部/直接） */
+  dirSource?: 'explicit' | 'ancestor' | 'scan' | 'registry' | 'direct';
 }
 
 export class AgentContext {
   readonly dir: string;
+  readonly dirSource: 'explicit' | 'ancestor' | 'scan' | 'registry' | 'direct';
   readonly actor: 'cli' | 'mcp' | 'internal';
   readonly quiet: boolean;
   readonly onProgress?: (ev: { phase: string; message: string; pct?: number }) => void;
@@ -34,6 +37,7 @@ export class AgentContext {
 
   constructor(opts: AgentContextOptions) {
     this.dir = path.resolve(opts.dir);
+    this.dirSource = opts.dirSource ?? 'direct';
     this.actor = opts.actor ?? 'cli';
     this.quiet = opts.quiet ?? false;
     this.onProgress = opts.progress;

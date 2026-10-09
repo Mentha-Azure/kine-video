@@ -144,6 +144,17 @@ function buildArgs(tool: string, p: Parsed): unknown {
         preview: flagBool(p, 'preview'),
         id: flagStr(p, 'id'),
       };
+    case 'layout':
+      return { scene: flagStr(p, 'scene'), at: flagNum(p, 'at'), strict: flagBool(p, 'strict') };
+    case 'contact':
+      return {
+        scene: flagStr(p, 'scene'),
+        t0: flagNum(p, 't0'),
+        t1: flagNum(p, 't1'),
+        count: flagNum(p, 'count'),
+        cols: flagNum(p, 'cols'),
+        cell: flagNum(p, 'cell'),
+      };
     case 'measure':
       return { metric: p.pos[0] ?? '', scene: flagStr(p, 'scene'), at: flagNum(p, 'at'), range: flagStr(p, 'range'), expect: flagStr(p, 'expect'), step: flagNum(p, 'step') };
     case 'audit':
@@ -245,15 +256,18 @@ export async function main(argv: string[]): Promise<number> {
     const mcpFlag = argv.includes('--dir') ? flagStr(parseArgs(rest), 'dir') : undefined;
     const mcpBase = process.env.KINE_CWD ?? process.cwd();
     let mcpDir = mcpFlag ? path.resolve(mcpBase, mcpFlag) : mcpBase;
+    let mcpVia: 'explicit' | 'ancestor' | 'scan' | 'registry' | 'direct' = mcpFlag ? 'explicit' : 'direct';
     if (mcpFlag === undefined) {
       // 启动时尽力智能发现（祖先→向下扫描→登记表）；失败保留 base，由每次工具调用再试并给出明确报错
       try {
-        mcpDir = resolveTargetDir(undefined, { explicit: false, base: mcpBase }).dir;
+        const rd = resolveTargetDir(undefined, { explicit: false, base: mcpBase });
+        mcpDir = rd.dir;
+        mcpVia = rd.via ?? 'direct';
       } catch {
         mcpDir = mcpBase;
       }
     }
-    await runMcpServer(mcpDir);
+    await runMcpServer(mcpDir, { via: mcpVia });
     // stdio 服务器：main 永不 resolve，避免外层 process.exit 杀掉服务进程；
     // stdin 关闭（客户端 EOF）后事件循环清空，进程自然退出。
     return new Promise<number>(() => {
@@ -291,6 +305,7 @@ export async function main(argv: string[]): Promise<number> {
 
   const ctx = new AgentContext({
     dir: resolvedDir.dir,
+    dirSource: resolvedDir.via ?? 'direct',
     actor: 'cli',
     quiet: quiet || json,
     progress: (ev) => {

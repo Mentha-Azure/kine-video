@@ -6,6 +6,40 @@ import { computeImpact } from '@kine/dsl';
 import { capturePngs, renderDefaults } from '@kine/render';
 import type { FrameProvider } from '@kine/metrics';
 import type { AgentContext } from '../context';
+import { fail, type ToolResult } from '../types';
+
+/** v4：edit 输出压缩——大对象/数组/长串折叠为摘要（反馈：dry-run 把整段 scenes 重复约四遍，吃上下文） */
+export function compactValue(v: unknown, depth = 0): unknown {
+  if (v === null || typeof v === 'number' || typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.length > 80 ? `${v.slice(0, 77)}…（${v.length} 字符）` : v;
+  if (Array.isArray(v)) {
+    if (v.length <= 3 && depth < 1) return v.map((x) => compactValue(x, depth + 1));
+    const head = v.slice(0, 2).map((x) => compactValue(x, depth + 1));
+    return [...head, `…共 ${v.length} 项`];
+  }
+  if (typeof v === 'object') {
+    const entries = Object.entries(v as Record<string, unknown>);
+    if (depth >= 1 || entries.length > 6) {
+      return `{…${entries.length} 键: ${entries.slice(0, 5).map(([k]) => k).join(', ')}${entries.length > 5 ? ', …' : ''}}`;
+    }
+    const o: Record<string, unknown> = {};
+    for (const [k, val] of entries) o[k] = compactValue(val, depth + 1);
+    return o;
+  }
+  return String(v);
+}
+
+/** v4 E-PROJ-006：写类工具在「自动解析目录」上的拒绝守卫（防不传 dir 时误改意外工程，如静默落到 examples/mv-mini） */
+export function guardWrite(ctx: AgentContext, tool: string): ToolResult | null {
+  if (ctx.dirSource === 'scan' || ctx.dirSource === 'registry') {
+    const from = ctx.dirSource === 'scan' ? '向下扫描' : '登记表回退';
+    return fail(tool, 'E-PROJ-006', `拒绝执行：工程目录由自动解析得到（${from}），写入类命令必须显式指定 --dir`, {
+      facts: [`当前解析目录：${ctx.dir}`],
+      hints: ['显式指定工程：kine <命令> --dir <工程目录>（MCP 传 dir 参数）', '查看登记：kine projects'],
+    });
+  }
+  return null;
+}
 
 /** 每幕帧数（影响分析 approx.frames 用） */
 export function framesPerScene(ir: KineIR): Record<string, number> {

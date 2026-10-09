@@ -87,7 +87,7 @@ scenes:
         id: boot_text
         alias: 开机副标题
         content: "> initializing deterministic compositor · loading ir · pinning seed 7 · frame(N) = f(N) is the only truth we keep"
-        style: { size: 1.15, weight: 500, align: left }
+        style: { size: 1.15, weight: 500, align: left, max_width: 1280 }
         place: { x: 260, y: 880, anchor: tl }
         type_period: 0.045
         fade_out: 0.6
