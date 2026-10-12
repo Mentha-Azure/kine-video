@@ -1,7 +1,7 @@
 // @kine/render — 渲染编排：worker 池、抓帧、编码、缓存、拼接、合流（规格文档04）
-import { existsSync, statfsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statfsSync, statSync } from 'node:fs';
 import * as path from 'node:path';
-import { pointAtFrame, type KineIR } from '@kine/dsl';
+import { kineHomeDir, pointAtFrame, resolveLibraryRefLite, type KineIR } from '@kine/dsl';
 import { short } from '@kine/dsl/hash';
 import {
   concatArgs,
@@ -87,6 +87,65 @@ export function renderDefaults(ir: KineIR, projectDir: string): RenderCommonOpti
       fr: ir.output.fps,
     },
   };
+}
+
+/** v5：收集 image 图层资产（本地/库 blob → dataURL），供宿主页 load 注入（反馈：image 图层此前无加载通路、静默失败） */
+export async function collectImageAssets(ir: KineIR, projectDir: string): Promise<Array<{ src: string; dataUrl: string }>> {
+  const out: Array<{ src: string; dataUrl: string }> = [];
+  const seen = new Set<string>();
+  const mimeOf = (p: string): string => {
+    const ext = path.extname(p).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.gif') return 'image/gif';
+    return 'image/png';
+  };
+  for (const sc of ir.scenes) {
+    for (const ly of sc.layers) {
+      if (ly.kind !== 'image' || seen.has(ly.src)) continue;
+      seen.add(ly.src);
+      try {
+        let file: string | null = null;
+        if (ly.src.startsWith('library://')) {
+          const r = resolveLibraryRefLite(ly.src, kineHomeDir());
+          file = 'error' in r ? null : r.file;
+        } else {
+          const abs = path.isAbsolute(ly.src) ? ly.src : path.resolve(projectDir, ly.src);
+          file = existsSync(abs) ? abs : null;
+        }
+        if (!file) continue;
+        const buf = readFileSync(file);
+        out.push({ src: ly.src, dataUrl: `data:${mimeOf(file)};base64,${buf.toString('base64')}` });
+      } catch {
+        /* 缺资产由 lint（E-ASSET-001）与运行时 missing 横幅报出 */
+      }
+    }
+  }
+  return out;
+}
+
+/** v5：收集全片字幕 cue（成片秒，跨幕合并排序） */
+export function collectSubtitleCues(ir: KineIR): Array<{ from: number; to: number; text: string }> {
+  const cues: Array<{ from: number; to: number; text: string }> = [];
+  for (const sc of ir.scenes) {
+    for (const ly of sc.layers) {
+      if (ly.kind === 'subtitles' && ly.cues) cues.push(...ly.cues);
+    }
+  }
+  return cues.sort((a, b) => a.from - b.from);
+}
+
+/** v5：cue 列表 → SRT 文本 */
+export function renderSrt(cues: Array<{ from: number; to: number; text: string }>): string {
+  const fmt = (t: number): string => {
+    const ms = Math.max(0, Math.round(t * 1000));
+    const h = Math.floor(ms / 3600000);
+    const m2 = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const r = ms % 1000;
+    return `${String(h).padStart(2, '0')}:${String(m2).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(r).padStart(3, '0')}`;
+  };
+  return cues.map((c, i) => `${i + 1}\n${fmt(c.from)} --> ${fmt(c.to)}\n${c.text}\n`).join('\n');
 }
 
 /** v4：磁盘剩余空间守卫（反馈：写 C 盘，当剩 4.3GB 时渲染脆弱）。<1GB 拒绝，附清理/重定向建议。 */
@@ -254,7 +313,7 @@ export async function renderRange(
     userDataDir: path.join(opts.workDir, 'browser', 'range'),
   });
   try {
-    await session.load(ir);
+    await session.load(ir, await collectImageAssets(ir, opts.projectDir));
     const warmA = pointAtFrame(ir.time.map, Math.min(6, frames - 1)).T;
     const warmB = pointAtFrame(ir.time.map, f0).T;
     await session.warmup([warmA, warmB]);
@@ -294,7 +353,7 @@ export async function renderProject(ir: KineIR, opts: RenderProjectOptions): Pro
         height: opts.height,
         userDataDir: path.join(opts.workDir, 'browser', `w${workerId}`),
       });
-      await st.session.load(ir);
+      await st.session.load(ir, await collectImageAssets(ir, opts.projectDir));
       await st.session.warmup([pointAtFrame(ir.time.map, Math.min(6, frames - 1)).T, pointAtFrame(ir.time.map, 0).T]);
     };
     try {
@@ -371,6 +430,12 @@ export async function renderProject(ir: KineIR, opts: RenderProjectOptions): Pro
     finalFile = path.join(versionDir, `${opts.version}.mp4`);
     const r = await ffmpegExec(muxArgs(videoFile, opts.audioFile, finalFile, ir.output.audio.bitrate));
     if (r.code !== 0) throw new Error(`合流失败：${r.stderr.slice(-800)}`);
+  }
+
+  // v5：字幕导出——渲染后把 subtitles 层 cue 写成 .srt（讲解片标准动作，反馈 P0-3）
+  const subCues = collectSubtitleCues(ir);
+  if (subCues.length > 0) {
+    atomicWriteFile(path.join(versionDir, `${opts.version}.srt`), renderSrt(subCues));
   }
 
   const elapsedMs = Date.now() - t0;
@@ -468,7 +533,7 @@ export async function capturePngs(
   });
   const out: ShotCapture[] = [];
   try {
-    await session.load(ir);
+    await session.load(ir, await collectImageAssets(ir, opts.projectDir));
     await session.warmup([pointAtFrame(ir.time.map, Math.min(6, ir.time.map.frames - 1)).T, pointAtFrame(ir.time.map, frames[0] ?? 0).T]);
     for (const f of frames) {
       const ff = Math.max(0, Math.min(ir.time.map.frames - 1, Math.floor(f)));
@@ -494,6 +559,6 @@ export async function openRenderSession(
     height: opts.height,
     userDataDir: path.join(opts.workDir, 'browser', opts.tag ?? 'session'),
   });
-  await session.load(ir);
+  await session.load(ir, await collectImageAssets(ir, opts.projectDir));
   return session;
 }

@@ -61,7 +61,7 @@ Agent 接口层   @kine/agent      CLI ×31 子命令 + MCP server（每工具�
 编译层         @kine/dsl        timeline.yaml --(zod 校验 + lint)--> IR（含时间对照表 map 与依赖图）
 渲染层         @kine/render     Edge CDP 逐帧抓帧 → ffmpeg image2pipe → .ts 分片 → concat → mux
                @kine/runtime    window.__kine = { load, jump, probe, stateHash }（纯函数逐帧）
-               @kine/widgets    33 个官方 widget（bd* / draw* 两族）
+               @kine/widgets    34 个官方 widget（bd* / draw* 两族）
 音频层         @kine/audio      SFX 离线合成 + 混音（成片时钟声明，改速度不需要重录）
 验证层         @kine/metrics    像素指标 / 断言引擎 / 基线 diff
 侧车           py/kine-py       stdio JSON 协议：合成器 / 混音 / 像素指标（numpy+scipy+PIL）
@@ -104,7 +104,7 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 | `baseline` | 保存/查看基线（指标 + 黄金帧 stateHash + 音频特征） | `kine baseline --save` |
 | `diff` | 两个版本/基线的三联 diff（语义/指标/关键帧） | `kine diff v0.2 v0.3` |
 | `preview` | 成品形态短预览（法定形态：3–5s、成片分辨率、带音轨） | `kine preview --at 12 --dur 4` |
-| `render` | 渲染：全片（默认）或 `--range a:b`（默认帧，`s` 后缀为秒）；`--preset` 编码档位；`--workers/--no-cache` | `kine render --range 0:5s --preset ultrafast` |
+| `render` | 渲染：全片（默认）或 `--range a:b`（默认帧，`s` 后缀为秒）；`--preset` 编码档位；`--work-dir` 工作目录（等价 `KINE_WORK_DIR`）；`--workers/--no-cache` | `kine render --range 0:5s --preset ultrafast` |
 | `verify` | 成片终检：帧数/时长/音轨/接缝/黄金帧 + 写报告 | `kine verify --version v0.3` |
 | `changelog` | 事务历史（用户原话 + patch + impact + 预览） | `kine changelog --since 2h` |
 | `rollback` | 回滚某事务（备份优先，写新条目） | `kine rollback tx_20261007_001` |
@@ -182,7 +182,7 @@ kine/
 ├─ packages/
 │  ├─ dsl/        时间映射 / schema / lint / 依赖图 / patch / 相机公式（单一真源）
 │  ├─ runtime/    jump / probe / stateHash / 合成器 / 转场库 / 后处理
-│  ├─ widgets/    33 个官方 widget
+│  ├─ widgets/    34 个官方 widget
 │  ├─ render/     CDP 抓帧 / ffmpeg 编码 / 分片 / 缓存 / 拼接 / mux
 │  ├─ audio/      音频计划 / 合成 / 混音 / env
 │  ├─ metrics/    像素指标 / 断言引擎 / 相机解析复算
@@ -218,7 +218,7 @@ demo/
 
 | 项目 | 状态 |
 | --- | --- |
-| `npx vitest run` | 14 文件 / 66 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3 守卫：range 严格校验/SFX 参数值/色板门槛、v4 守卫：文本插值/输出折叠/写保护/W-COLOR-004/W-TEXT-001） |
+| `npx vitest run` | 15 文件 / 73 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3/v4 守卫、v5 守卫：浅色模式/字幕/色板浅底校验） |
 | 7 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码；short-transition 用于 transition_spike 设计内豁免实测） |
 | M0 五命令验收（mv-mini） | `init`（绝对/相对路径 × blank/mv-mini 模板）· `audit`（语法 0/0、purity 0、运行时全轴扫描 0 错误）· `render`（v0.4，1440 帧全缓存命中，6.8s）· `verify`（帧数/时长/音频/抽检全过，tail-clean 为已解释 WARN）· `preview --at 12 --dur 4`（含音轨成品形态）——全 PASS |
 | MCP 冒烟 | initialize / tools(29) / map / probe / resources(7) 全通过 |
@@ -287,6 +287,19 @@ v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部
 - **渲染环境加固**：分片缓存要求 `.ok` 完整性凭据（文件大小复核；中断留下的截断块不再被误判为缓存命中）；磁盘剩余 <1GB 报 `E-RENDER-007`（hints 含 `kine cache gc` 与 **`KINE_WORK_DIR`** 环境变量——支持把工作区重定向出 C 盘）。
 - **输出精简**：`kine edit` 的 diffs / summary / facts 对长值自动折叠（不再整段 `scenes` 重复四遍）；`check` 的断言消息与报告对比例指标补百分数解读（如 `<= 0.6（比例 ≤ 60%）`，0.88% 判 PASS 的依据一眼可见）。
 - **MCP 版本标记**：serverInfo 版本包含 git 短哈希——源码改动并重启后，一眼确认加载的是哪一版。
+
+## v5：浅色模式、资产管线与字幕层
+
+基于第五轮外测（浅色主题被封死 / image 图层静默失效 / 无字幕层 / 崩溃与误导性 verdict / 手感层）：
+
+- **浅色模式（`theme.mode: light`）**：浅底色与深字获得合法路径——E-COLOR-002 改判「通道 ≥180」；新增 `E-COLOR-005`（正文对比度 ≥4.5:1，WCAG）；指标自动切浅底口径（`density`/`edge_band` 以暗像素计内容，`black_level` 报告**白电平**）；色板可声明 `mode: light`（注册期同套校验）；`dark`（默认）行为与哈希逐字节不变。
+- **图片资产管线接通**：渲染管线从 IR 收集 `image` 图层（本地路径以 timeline 为基准 / `library://` 库 blob）→ 预解码注入运行时。缺资产：audit 期 `E-ASSET-001` 拦下 + 运行时**贴屏横幅**提示（不再有画外红框骗人）；`video` 图层明确报 `E-ASSET-002`（无确定性丢帧方案——反例比静默失败好）。
+- **字幕层 `kind: subtitles`**：内联 `cues` 或引用 `.srt`（编译期内联进 IR）；自动换行 + 逐行居中，`zone` 定位（默认下缘）；lint：`E-SUB-001`（时间非法）/`W-SUB-001`（重叠）/`W-SUB-002`（SRT 坏块）。`render` 完成后自动把字幕导出为 `<version>.srt` 到交付目录。
+- **布局与排版**：`place.anchor: tl|tr|bl|br|center`（右对齐 HUD 不再靠猜坐标）；文本 `style.line_height` 可显式；字号换算式写死入文档：`px = size × base × fontScale × ds × 1.06`（ds = S/1080）。
+- **verdict 三段式**：`audit` 首行给出「blocking（引擎无法编译/运行）/ policy（设计纪律）/ 警告」分类计数；`check` 汇总 `PASS n / FAIL(blocking) n / FAIL(warn) n / SKIP n`——warn 级未达项不再混进顶层 verdict（报告头单独标注）。
+- **MCP 陈旧与 fail-open 修复**：serverInfo 版本含 git 短哈希 + **bundle 哈希**；`doctor` 新增宿主 bundle 新鲜度检查（源码比 bundle 新 → WARN：重建 + 重启）；`W-WIDGET-001` 对「不在元数据注册表」的 widget 也会报警（不再静默跳过校验）；`registerWidget` 重名时 console.warn；FFmpeg 管道 EPIPE 吞并为分片失败（磁盘写满不再拖崩 MCP 进程）。
+- **冒烟实证**：图片资产注入 → `probe` 显示 `img1=ok / img2=missing-asset`；缺失资产 audit 报 `E-ASSET-001`；mv-mini specHash `566b68cc`、visualHash `6884bbd2` **零变化**（v5 对既有工程零像素影响，分片缓存直接复用）。
+- 延后（已登记）：`render --async + kine jobs`、运行时 `library://` widget-pack 加载（`custom.` 前缀）、meta 与源码一致性生成、`audio.voice` 独立轨。
 
 ## 规格文档
 

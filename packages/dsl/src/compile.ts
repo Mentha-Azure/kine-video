@@ -9,6 +9,7 @@ import type {
 } from './schema';
 import { TRANSITION_NAMES } from './schema';
 import { buildDeps, type DepEdge, type DepNode } from './deps';
+import { parseSrt } from './srt';
 import { kineHomeDir, parseLibraryRef, resolveLibraryRefLite } from './library';
 import { applyPalette, canonicalTheme, resolvePalette } from './palette';
 
@@ -169,6 +170,30 @@ export function ltToT(scene: Pick<TimeScene, 'T0' | 'T1' | 'dur' | 'rate' | 'acc
 }
 
 // ---------------------------------------------------------------- compile
+/** v5：把 subtitles 层的 src（SRT）内联为 cues（运行时不读文件）；文件不存在时交给 lint 报 E-ASSET-001 */
+function inlineSubtitlesLayers(layers: LayerSpecT[], projectDir: string, issues: Issue[]): LayerSpecT[] {
+  return layers.map((ly) => {
+    if (ly.kind !== 'subtitles') return ly;
+    if (!ly.src || (ly.cues && ly.cues.length > 0)) return ly;
+    const abs = isAbsolute(ly.src) ? ly.src : resolve(projectDir, ly.src);
+    if (!existsSync(abs)) return ly;
+    try {
+      const parsed = parseSrt(readFileSync(abs, 'utf8'));
+      if (parsed.cues.length === 0) {
+        issues.push({ code: 'E-SUB-001', severity: 'error', message: `SRT 无可解析 cue：${ly.src}`, where: { file: '', path: 'scenes.layers.src' }, hints: ['时间行形如 00:00:01,200 --> 00:00:02,400'] });
+        return ly;
+      }
+      if (parsed.bad > 0) {
+        issues.push({ code: 'W-SUB-002', severity: 'warn', message: `SRT 有 ${parsed.bad} 个块无法解析（已跳过）：${ly.src}`, where: { file: '', path: 'scenes.layers.src' } });
+      }
+      return { ...ly, cues: parsed.cues };
+    } catch (e) {
+      issues.push({ code: 'E-ASSET-001', severity: 'error', message: `字幕 SRT 读取失败：${ly.src}（${e instanceof Error ? e.message : String(e)}）`, where: { file: '', path: 'scenes.layers.src' } });
+      return ly;
+    }
+  });
+}
+
 export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): CompileResult {
   const issues: Issue[] = [];
   const fps = spec.output.fps;
@@ -264,7 +289,7 @@ export function compile(spec: ProjectSpecT, opts?: { projectDir?: string }): Com
       frame0: ts.frame0,
       frame1: ts.frame1,
       camera: s.camera,
-      layers: s.layers,
+      layers: inlineSubtitlesLayers(s.layers, projectDir, issues),
       shots,
       effects: s.effects,
       post: s.post,

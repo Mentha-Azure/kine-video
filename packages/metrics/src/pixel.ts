@@ -12,21 +12,21 @@ export interface EdgeBandData { value: number; band: number; sides: Record<strin
 export interface BlackLevelData { value: number; rgb: [number, number, number]; maxChannel: number }
 export interface SpikeData { value: number; diffs: number[]; hits: { index: number; from: number; to: number; ratio: number; neighborhoodMean: number }[] }
 
-export async function pyDensity(png: string, opts: { lit?: number } = {}): Promise<DensityData> {
+export async function pyDensity(png: string, opts: { lit?: number; invert?: boolean } = {}): Promise<DensityData> {
   const py = await getKinePy();
-  return py.call<DensityData>('density', { png, lit: opts.lit ?? 40 });
+  return py.call<DensityData>('density', { png, lit: opts.lit ?? 40, invert: opts.invert ?? false });
 }
 export async function pyFrameDiff(a: string, b: string, opts: { eps?: number } = {}): Promise<FrameDiffData> {
   const py = await getKinePy();
   return py.call<FrameDiffData>('frame_diff', { a, b, eps: opts.eps ?? 8 });
 }
-export async function pyEdgeBand(png: string, opts: { band?: number; lit?: number } = {}): Promise<EdgeBandData> {
+export async function pyEdgeBand(png: string, opts: { band?: number; lit?: number; invert?: boolean } = {}): Promise<EdgeBandData> {
   const py = await getKinePy();
-  return py.call<EdgeBandData>('edge_band', { png, band: opts.band ?? 34, lit: opts.lit ?? 40 });
+  return py.call<EdgeBandData>('edge_band', { png, band: opts.band ?? 34, lit: opts.lit ?? 40, invert: opts.invert ?? false });
 }
-export async function pyBlackLevel(png: string): Promise<BlackLevelData> {
+export async function pyBlackLevel(png: string, opts: { pick?: 'dark' | 'light' } = {}): Promise<BlackLevelData> {
   const py = await getKinePy();
-  return py.call<BlackLevelData>('black_level', { png });
+  return py.call<BlackLevelData>('black_level', { png, pick: opts.pick ?? 'dark' });
 }
 export async function pyTransitionSpike(pngs: string[], opts: { eps?: number; factor?: number } = {}): Promise<SpikeData> {
   const py = await getKinePy();

@@ -1,4 +1,5 @@
 // @kine/widgets — 官方 widget 库入口（宿主 bundle 单入口调用 registerAll）
+import './chart';
 import './bd1';
 import './bd2';
 import './draw1';

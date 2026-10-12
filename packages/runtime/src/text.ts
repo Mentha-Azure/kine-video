@@ -46,7 +46,7 @@ export function drawTextLayer(
   lt: number,
   theme: ResolvedTheme,
   boxW: number,
-  opts?: { centerX?: boolean; frame?: number; t?: number; T?: number },
+  opts?: { centerX?: boolean; rightAlign?: boolean; vBottom?: boolean; frame?: number; t?: number; T?: number },
 ): TextDrawResult {
   const ds = theme.S / 1080;
   const px = (layer.style.size || 1) * theme.fontBase * theme.fontScale * ds * 1.06;
@@ -70,7 +70,7 @@ export function drawTextLayer(
   const text = content.slice(0, visible);
 
   const maxW = layer.style.max_width ? layer.style.max_width * ds : boxW;
-  const lineH = px * 1.4;
+  const lineH = px * (layer.style.line_height ?? 1.4);
   const lines: string[] = [];
   if (layer.style.max_width) {
     let cur = '';
@@ -92,6 +92,7 @@ export function drawTextLayer(
 
   const lineX = (lw: number): number => {
     if (opts?.centerX) return -blockW / 2;
+    if (opts?.rightAlign) return -blockW;
     const align = layer.style.align;
     if (align === 'center') return -blockW / 2;
     if (align === 'right') return -blockW;
@@ -104,17 +105,18 @@ export function drawTextLayer(
     return 0;
   };
 
+  const y0 = opts?.vBottom ? -(lines.length * lineH) : 0;
   ctx.fillStyle = color;
   for (let i = 0; i < lines.length; i++) {
     const lw = ctx.measureText(lines[i]).width;
-    ctx.fillText(lines[i], lineX(lw) + innerX(lw), i * lineH);
+    ctx.fillText(lines[i], lineX(lw) + innerX(lw), y0 + i * lineH);
   }
   let cursorW = 0;
   if (typing) {
     const lastW = ctx.measureText(lines[lines.length - 1]).width;
     const blink = 0.5 + 0.5 * Math.sin(Math.PI * 2 * (lt * 1.4));
     ctx.globalAlpha = 0.35 + 0.5 * blink;
-    ctx.fillText('▍', lineX(lastW) + innerX(lastW) + lastW + px * 0.08, (lines.length - 1) * lineH);
+    ctx.fillText('▍', lineX(lastW) + innerX(lastW) + lastW + px * 0.08, y0 + (lines.length - 1) * lineH);
     cursorW = px * 0.7;
     ctx.globalAlpha = 1;
   }
@@ -122,7 +124,7 @@ export function drawTextLayer(
   const boxX = opts?.centerX ? -blockW / 2 : lineX(blockW);
   const state = typing ? 'typing' : 'done';
   return {
-    box: { x: boxX, y: 0, w: blockW + cursorW, h: lines.length * lineH },
+    box: { x: boxX, y: y0, w: blockW + cursorW, h: lines.length * lineH },
     visibleChars: visible,
     state,
     measure: {
@@ -132,6 +134,47 @@ export function drawTextLayer(
       line_height: +lineH.toFixed(2),
     },
   };
+}
+
+/** v5：字幕 cue 绘制——逐行水平居中 + 按 maxW 自动换行；zone 为文本块中心。 */
+export interface CueTextOpts {
+  x: number;
+  y: number;
+  px: number;
+  color: string;
+  maxW: number;
+  font: string;
+  weight?: number;
+}
+
+export function drawCueText(ctx: CanvasRenderingContext2D, text: string, o: CueTextOpts): { lineCount: number; blockH: number } {
+  ctx.save();
+  ctx.font = `${o.weight ?? 600} ${o.px}px ${o.font}`;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  const lines: string[] = [];
+  for (const para of text.split('\n')) {
+    let cur = '';
+    for (const ch of para) {
+      const test = cur + ch;
+      if (ctx.measureText(test).width > o.maxW && cur.length > 0) {
+        lines.push(cur);
+        cur = ch;
+      } else cur = test;
+    }
+    lines.push(cur);
+  }
+  const lineH = o.px * 1.4;
+  const blockH = lines.length * lineH;
+  const y0c = -blockH / 2;
+  ctx.translate(o.x, o.y);
+  ctx.fillStyle = o.color;
+  for (let i = 0; i < lines.length; i++) {
+    const lw = ctx.measureText(lines[i]).width;
+    ctx.fillText(lines[i], -lw / 2, y0c + i * lineH);
+  }
+  ctx.restore();
+  return { lineCount: lines.length, blockH };
 }
 
 export { smooth, rgba };

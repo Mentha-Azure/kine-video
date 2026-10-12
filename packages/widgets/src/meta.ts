@@ -20,6 +20,29 @@ export interface WidgetMeta {
 const P = (name: string, type: 'number' | 'string', def: number | string, desc: string): WidgetPropMeta => ({ name, type, default: def, desc });
 
 export const WIDGET_META: Record<string, WidgetMeta> = {
+  chart: {
+    desc: '数据图表：bars（柱/直方，可 bins 分箱）、area（面积）、line（折线）、steps（阶梯累计）；网格 + 基线 + 标签 + 强调标记 + 数值标注，左→右揭示或被逐柱长出',
+    note: '数据用字符串：values="1.2,3.4"（逗号/空白分隔）、labels="一|二|三"（竖线分隔）；mark 指定强调索引（-1 关闭）',
+    props: [
+      P('kind', 'string', 'bars', '图形：bars / area / line / steps'),
+      P('values', 'string', '', '数据序列（逗号或空白分隔的数字）'),
+      P('labels', 'string', '', '横轴标签（竖线分隔；数量与数据点一致或按比例摊放）'),
+      P('bins', 'number', 0, 'bars 分箱数：0=逐值成柱，>0=按均值归并成 N 箱'),
+      P('max', 'number', 0, '纵轴上限：0=按数据自动'),
+      P('min', 'number', 0, '纵轴下限'),
+      P('grid', 'number', 4, '横向网格线数量（0=不画）'),
+      P('axis', 'number', 1, '是否画基线（1/0）'),
+      P('gap', 'number', 0.34, 'bars 柱间距比例 0–0.8'),
+      P('reveal', 'number', 1.2, '揭示动画时长（秒）'),
+      P('mark', 'number', -1, '强调索引（-1=无）'),
+      P('mark_label', 'string', '', '强调点上方标注文本'),
+      P('show_values', 'number', 0, '柱顶是否显示数值（1/0，仅 bars）'),
+      P('digits', 'number', 1, '数值小数位'),
+      P('suffix', 'string', '', '数值后缀（如 %）'),
+      P('dots', 'number', 0, '折点是否画圆点（1/0，area/line）'),
+      P('smooth', 'number', 0, '折线是否做平滑（1/0，area/line）'),
+    ],
+  },
   // ---- bd 族（16）
   bdBG: {
     desc: '背景网格：细网格上一条扫描带周期性扫过，带内格子短暂变亮（大面积活背景，防静态）',

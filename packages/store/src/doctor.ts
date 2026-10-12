@@ -5,6 +5,7 @@ import { compile } from '@kine/dsl';
 import { loadCacheIndex, cacheStatus, saveCacheIndex } from './cache';
 import { atomicWriteFile, dirSize } from './layout';
 import { cleanStaleLocks } from './locks';
+import { kineRepoRoot } from './pyside';
 import type { ProjectStore } from './project';
 import { listVersions, readLatest, setLatest } from './versions';
 
@@ -135,6 +136,34 @@ export function doctor(store: ProjectStore, opts: { fix?: boolean } = {}): Docto
   // 6) work 目录体积报告
   const workBytes = dirSize(store.layout.workDir);
   checks.push({ name: 'work', status: 'PASS', detail: `work 目录 ${(workBytes / 1048576).toFixed(1)}MB（kine cache gc 可回收）` });
+
+  // 7) 宿主 bundle 新鲜度（v5：反馈——改源码后 MCP 常驻旧模块且难确认）
+  try {
+    const repo = kineRepoRoot();
+    const bundle = path.join(repo, 'packages', 'render', 'assets', 'kine-host.js');
+    if (fs.existsSync(bundle)) {
+      const bt = fs.statSync(bundle).mtimeMs;
+      let newest = 0;
+      for (const dir of ['packages/runtime/src', 'packages/widgets/src', 'packages/render/host']) {
+        const d = path.join(repo, dir);
+        if (!fs.existsSync(d)) continue;
+        for (const f of fs.readdirSync(d)) {
+          if (!f.endsWith('.ts')) continue;
+          const mt = fs.statSync(path.join(d, f)).mtimeMs;
+          if (mt > newest) newest = mt;
+        }
+      }
+      if (newest > bt + 1000) {
+        checks.push({ name: 'bundle', status: 'WARN', detail: '宿主 bundle 早于源码：先 npx tsx tools/build-web.ts 重建，再重启 MCP 服务' });
+      } else {
+        checks.push({ name: 'bundle', status: 'PASS', detail: `宿主 bundle 新鲜（${(fs.statSync(bundle).size / 1024).toFixed(0)}KB）` });
+      }
+    } else {
+      checks.push({ name: 'bundle', status: 'WARN', detail: '宿主 bundle 缺失（渲染前运行 npx tsx tools/build-web.ts）' });
+    }
+  } catch {
+    /* 检查失败不阻塞 */
+  }
 
   return { checks, ok: checks.every((c) => c.status !== 'FAIL'), fixedCount };
 }

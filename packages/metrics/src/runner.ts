@@ -140,7 +140,8 @@ async function runDensity(ir: KineIR, scope: MetricScope | null, inputs: MetricI
   for (const f of frames) {
     const p = files.get(f);
     if (!p) throw new Error(`帧 ${f} 的 PNG 未提供`);
-    const d = await pyDensity(p);
+    const light = ir.theme.mode === 'light';
+    const d = await pyDensity(p, { invert: light });
     values.push({ frame: f, value: d.value, backgroundRgb: d.backgroundRgb, hotspots: d.hotspots });
   }
   const sorted = [...values].sort((a, b) => a.value - b.value);
@@ -152,7 +153,7 @@ async function runDensity(ir: KineIR, scope: MetricScope | null, inputs: MetricI
     `采样 ${values.length} 帧（${frames.join(', ')}）`,
     `最差帧背景 RGB(${worst.backgroundRgb.map((x) => x.toFixed(1)).join(', ')})`,
   ];
-  const interp = `密度 ${fmtPct(vmin)}（阈值 ≥0.90%）。${vmin >= 0.009 ? '内容存在感正常。' : '偏空——黑屏/画面过空，检查该帧元素是否被裁掉或 alpha 过低。'} 热点 top：${JSON.stringify(worst.hotspots).slice(0, 120)}`;
+  const interp = `密度 ${fmtPct(vmin)}（阈值 ≥0.90%${ir.theme.mode === 'light' ? '；浅色模式以暗像素计内容' : ''}）。${vmin >= 0.009 ? '内容存在感正常。' : '偏空——黑屏/画面过空，检查该帧元素是否被裁掉或 alpha 过低。'} 热点 top：${JSON.stringify(worst.hotspots).slice(0, 120)}`;
   return {
     metric: 'density', scope, value: vmin, unit: 'ratio',
     agg: { min: vmin, max: vmax },
@@ -217,13 +218,13 @@ async function runEdgeBand(ir: KineIR, scope: MetricScope | null, inputs: Metric
   for (const f of frames) {
     const p = files.get(f);
     if (!p) throw new Error(`帧 ${f} 的 PNG 未提供`);
-    const d = await pyEdgeBand(p);
+    const d = await pyEdgeBand(p, { invert: ir.theme.mode === 'light' });
     values.push({ frame: f, value: d.value, sides: d.sides });
   }
   const vmax = values.reduce((m, x) => Math.max(m, x.value), 0);
   const vmin = values.reduce((m, x) => Math.min(m, x.value), 1);
   const worst = values.find((x) => x.value === vmax)!;
-  const interp = `${vmax <= 0.6 ? '边缘带干净（≤0.6）。' : '边缘带内容过多：贴边 HUD 可能被裁（L-HUD-001：贴边一律 max(96, W*0.095) 起排）。'} 最差四边：${JSON.stringify(worst.sides)}`;
+  const interp = `${vmax <= 0.6 ? '边缘带干净（≤0.6）。' : '边缘带内容过多：贴边 HUD 可能被裁（L-HUD-001：贴边一律 max(96, W*0.095) 起排）。'} 最差四边：${JSON.stringify(worst.sides)}${ir.theme.mode === 'light' ? '（浅色模式：以暗像素为内容）' : ''}`;
   return {
     metric: 'edge_band', scope, value: vmax, unit: 'ratio',
     agg: { min: vmin, max: vmax },
@@ -240,18 +241,22 @@ async function runBlackLevel(ir: KineIR, scope: MetricScope | null, inputs: Metr
   for (const f of frames) {
     const p = files.get(f);
     if (!p) throw new Error(`帧 ${f} 的 PNG 未提供`);
-    const d = await pyBlackLevel(p);
+    const d = await pyBlackLevel(p, { pick: ir.theme.mode === 'light' ? 'light' : 'dark' });
     values.push({ frame: f, value: d.value, rgb: d.rgb, maxChannel: d.maxChannel });
   }
   const vmin = values.reduce((m, x) => Math.min(m, x.value), Infinity);
   const vmax = values.reduce((m, x) => Math.max(m, x.value), -Infinity);
   const worst = values.find((x) => x.value === vmax)!;
-  const interp = `黑电平 ${vmin.toFixed(2)}..${vmax.toFixed(2)}（健康 6..9）。${vmax > 9 ? '偏灰/白纱：检查 flash 与后处理 alpha、背景渐变（发灰根因）。' : vmin < 6 ? '偏死黑：检查背景色与暗角过强。' : '正常。'} 最大帧 RGB(${worst.rgb.map((x) => x.toFixed(1)).join(', ')})`;
+  const lightMode = ir.theme.mode === 'light';
+  const label = lightMode ? 'white_level' : 'black_level';
+  const interp = lightMode
+    ? `白电平 ${vmin.toFixed(2)}..${vmax.toFixed(2)}（浅色模式期望 ≈235..252；<235 偏灰、>252 死白）。最大帧 RGB(${worst.rgb.map((x) => x.toFixed(1)).join(', ')})`
+    : `黑电平 ${vmin.toFixed(2)}..${vmax.toFixed(2)}（健康 6..9）。${vmax > 9 ? '偏灰/白纱：检查 flash 与后处理 alpha、背景渐变（发灰根因）。' : vmin < 6 ? '偏死黑：检查背景色与暗角过强。' : '正常。'} 最大帧 RGB(${worst.rgb.map((x) => x.toFixed(1)).join(', ')})`;
   return {
     metric: 'black_level', scope, value: vmax, unit: 'level',
     agg: { min: vmin, max: vmax },
-    extras: { perFrame: values },
-    sample: { frames }, interpretation: interp, facts: [`black_level 范围 ${vmin.toFixed(2)}..${vmax.toFixed(2)}（样本 ${values.length}）`],
+    extras: { perFrame: values, mode: ir.theme.mode },
+    sample: { frames }, interpretation: interp, facts: [`${label} 范围 ${vmin.toFixed(2)}..${vmax.toFixed(2)}（样本 ${values.length}${lightMode ? '；浅色模式=最亮 30% 像素' : ''}）`],
   };
 }
 
@@ -485,10 +490,12 @@ export interface AssertReport {
   results: AssertResult[];
   passCount: number;
   failCount: number;
+  /** v5：FAIL 中 severity=warn 的数量（与 blocking 区分——顶层 verdict 不再混三种含义） */
+  warnFailCount: number;
   skipCount: number;
   ok: boolean;
   markdown: string;
-  json: { results: AssertResult[]; passCount: number; failCount: number; skipCount: number; ok: boolean };
+  json: { results: AssertResult[]; passCount: number; failCount: number; warnFailCount: number; skipCount: number; ok: boolean };
 }
 
 function displayValue(metric: string, value: number | null): string {
@@ -565,18 +572,20 @@ export async function runAsserts(
   }
   const passCount = results.filter((r) => r.verdict === 'PASS').length;
   const failCount = results.filter((r) => r.verdict === 'FAIL').length;
+  const warnFailCount = results.filter((r) => r.verdict === 'FAIL' && r.severity === 'warn').length;
+  const blockingFailCount = failCount - warnFailCount;
   const skipCount = results.filter((r) => r.verdict === 'SKIP').length;
-  const ok = failCount === 0;
+  const ok = blockingFailCount === 0;
   const lines = [
     '| 断言 | 指标 | scope | 期望 | 实测 | 判定 |',
     '|---|---|---|---|---|---|',
-    ...results.map((r) => `| ${r.id} | ${r.metric} | ${r.scope ? JSON.stringify(r.scope) : '全片'} | ${displayExpect(r.metric, r.expect)} | ${r.display} | ${r.verdict === 'PASS' ? '✅ PASS' : r.verdict === 'FAIL' ? '❌ FAIL' : '⏭ SKIP'} |`),
+    ...results.map((r) => `| ${r.id} | ${r.metric} | ${r.scope ? JSON.stringify(r.scope) : '全片'} | ${displayExpect(r.metric, r.expect)} | ${r.display} | ${r.verdict === 'PASS' ? '✅ PASS' : r.verdict === 'FAIL' ? (r.severity === 'warn' ? '⚠ FAIL(warn)' : '❌ FAIL') : '⏭ SKIP'} |`),
     '',
-    `汇总：PASS ${passCount} / FAIL ${failCount} / SKIP ${skipCount}`,
+    `汇总：PASS ${passCount} / FAIL(blocking) ${blockingFailCount} / FAIL(warn) ${warnFailCount} / SKIP ${skipCount}`,
   ];
   return {
-    results, passCount, failCount, skipCount, ok,
+    results, passCount, failCount, warnFailCount, skipCount, ok,
     markdown: lines.join('\n'),
-    json: { results, passCount, failCount, skipCount, ok },
+    json: { results, passCount, failCount, warnFailCount, skipCount, ok },
   };
 }

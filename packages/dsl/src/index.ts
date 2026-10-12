@@ -12,6 +12,7 @@ export * from './lint';
 export * from './rand';
 export * from './camera';
 export * from './library';
+export * from './srt';
 export * from './palette';
 
 import { compile, type CompileResult } from './compile';

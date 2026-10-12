@@ -145,7 +145,7 @@ export async function toolVerify(ctx: AgentContext, opts: VerifyOptions = {}): P
           detail: `音乐区 [0, ${cutFrom}s) 最响窗 ${Number.isFinite(loudest) ? loudest.toFixed(2) : '-inf'}dB（目标 > -20dB）`,
         });
       } else {
-        audioRows.push({ id: 'music-intact', status: 'SKIP', detail: '无音乐轨（纯 sfx 工程）' });
+        audioRows.push({ id: 'music-intact', status: 'SKIP', detail: '主音轨由 SFX/旁白构成（无 music 段）：music-intact 不适用；音轨存在性已由 audio-track 检查覆盖' });
       }
     }
   } catch (e) {

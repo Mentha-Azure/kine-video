@@ -114,6 +114,8 @@ export const ThemeSpec = z.object({
   profile: z.enum(['core', 'extended', 'free']).default('core'),
   /** 色板引用：'core' 或 library://<id>（仅 profile: extended|free 下生效） */
   palette: z.string().min(1).optional(),
+  /** v5：地色模式。light → E-COLOR-002 改判浅底色与对比度，指标以浅底口径采样（black_level 报告白电平） */
+  mode: z.enum(['dark', 'light']).default('dark'),
 });
 
 // ---------------------------------------------------------------- render
@@ -298,7 +300,7 @@ export const PlaceSpec = z.object({
   y: z.number(),
   w: z.number().positive().optional(),
   h: z.number().positive().optional(),
-  anchor: z.enum(['tl', 'center']).default('tl'),
+  anchor: z.enum(['tl', 'tr', 'bl', 'br', 'center']).default('tl'),
 });
 
 const LayerBase = {
@@ -340,6 +342,8 @@ export const TextStyleSpec = z.object({
   weight: z.number().int().min(100).max(900).default(500),
   align: z.enum(['left', 'center', 'right']).default('left'),
   max_width: z.number().positive().optional(),
+  /** v5：行高倍数（默认 1.4；px = size × base × fontScale × ds × 1.06） */
+  line_height: z.number().positive().optional(),
 });
 
 export const TextLayer = z.object({
@@ -368,6 +372,30 @@ export const VideoLayer = z.object({
   place: PlaceSpec.default({ x: 0, y: 0, anchor: 'tl' }),
 });
 
+/** v5：字幕 cue（成片秒 t） */
+export const CueSpec = z.object({
+  from: z.number().min(0),
+  to: z.number().positive(),
+  text: z.string(),
+});
+
+/** v5：字幕层——cue 列表或 SRT 文件（工程相对路径，编译期内联进 IR）；render 时另导出 .srt */
+export const SubtitlesLayer = z.object({
+  kind: z.literal('subtitles'),
+  ...LayerBase,
+  src: z.string().optional(),
+  cues: z.array(CueSpec).optional(),
+  style: z
+    .object({
+      size: z.number().positive().default(1.0),
+      color: HexColor.optional(),
+      max_width: z.number().positive().optional(),
+    })
+    .default({ size: 1.0 }),
+  /** 字幕中心锚点（画布像素坐标，默认画面下方） */
+  zone: z.object({ x: z.number().default(960), y: z.number().default(950) }).default({ x: 960, y: 950 }),
+});
+
 export const FX_KINDS = ['scanlines', 'vignette', 'grain', 'chroma', 'redbar', 'pulse'] as const;
 
 export const FxLayer = z.object({
@@ -383,6 +411,7 @@ export const LayerSpec = z.discriminatedUnion('kind', [
   TextLayer,
   ImageLayer,
   VideoLayer,
+  SubtitlesLayer,
   FxLayer,
 ]);
 
@@ -503,7 +532,7 @@ export const KNOWN_KEYS: Record<string, string[]> = {
   'output.audio': ['codec', 'bitrate', 'limit_dbfs'],
   pace: ['segments'],
   'pace.segment': ['id', 'until', 'ratio'],
-  theme: ['bg', 'text', 'text_dim', 'accent', 'accent_secondary', 'font', 'post', 'profile', 'palette'],
+  theme: ['bg', 'text', 'text_dim', 'accent', 'accent_secondary', 'font', 'post', 'profile', 'palette', 'mode'],
   'theme.accent_secondary': ['color', 'max_frames', 'use'],
   'theme.font': ['family', 'scale', 'base'],
   'theme.post': ['vignette', 'scanline', 'flash', 'black_level'],
@@ -531,7 +560,11 @@ export const KNOWN_KEYS: Record<string, string[]> = {
   'layer.particles': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'depth', 'count', 'size', 'parallax', 'speed', 'keepout', 'color'],
   'layer.widget': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'widget', 'props', 'place'],
   'layer.text': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'content', 'style', 'place', 'type_period'],
-  'layer.text.style': ['size', 'color', 'weight', 'align', 'max_width'],
+  'layer.text.style': ['size', 'color', 'weight', 'align', 'max_width', 'line_height'],
+  'layer.subtitles': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'src', 'cues', 'style', 'zone'],
+  'layer.subtitles.cue': ['from', 'to', 'text'],
+  'layer.subtitles.style': ['size', 'color', 'max_width'],
+  'layer.subtitles.zone': ['x', 'y'],
   'layer.image': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'src', 'fit', 'place'],
   'layer.video': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'src', 'fit', 'place'],
   'layer.fx': ['kind', 'id', 'tags', 'alias', 'window', 'fade_in', 'fade_out', 'fx', 'params'],

@@ -2,8 +2,10 @@
 import type { Issue } from './errors';
 import { KNOWN_KEYS, SYNTH_PARAM_KEYS, validateSynthParamValue, type ProjectSpecT } from './schema';
 import type { LineLookup } from './load';
-import { kineHomeDir } from './library';
+import { kineHomeDir, resolveLibraryRefLite } from './library';
 import { applyPalette, CORE_PALETTE, resolvePalette, type PaletteSpec } from './palette';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 export interface LintOptions {
   file: string;
@@ -270,15 +272,52 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
       where: loc(opts, ['theme', 'accent_secondary']),
     });
   }
+  // v5：地色模式——dark：通道 ≤32（防发灰）；light：通道 ≥180 + 正文对比度（E-COLOR-005）
+  const groundMode: string = (effTheme as { mode?: string }).mode ?? 'dark';
   for (const [i, c] of effTheme.bg.entries()) {
     const rgb = hexToRgb(c);
-    if (Math.max(rgb.r, rgb.g, rgb.b) > 32) {
+    if (groundMode === 'light') {
+      if (Math.min(rgb.r, rgb.g, rgb.b) < 180) {
+        push({
+          code: 'E-COLOR-002', severity: 'error',
+          message: `浅色模式背景 ${c} 过暗（通道应 ≥180）`,
+          where: loc(opts, ['theme', 'bg', i]),
+          facts: [`RGB=${rgb.r},${rgb.g},${rgb.b}`, 'light 模式 = 浅底深字；指标按浅底口径采样（black_level 报告白电平）'],
+          hints: ['深底请去掉 theme.mode: light（或色板 mode: light）'],
+        });
+      }
+    } else if (Math.max(rgb.r, rgb.g, rgb.b) > 32) {
       push({
         code: 'E-COLOR-002', severity: 'error',
         message: `背景色 ${c} 过亮（通道应 ≤32，防发灰；实际黑电平由 black_level 指标在成片帧上把关）`,
         where: loc(opts, ['theme', 'bg', i]),
         facts: [`RGB=${rgb.r},${rgb.g},${rgb.b}`, '目标黑电平 6–9（渲染后可测）'],
+        hints: ['浅色需求请声明 theme.mode: light（v5）'],
       });
+    }
+  }
+  if (groundMode === 'light') {
+    const relLum = (c: string): number => {
+      const { r, g, b } = hexToRgb(c);
+      const f = (x: number) => {
+        const y = x / 255;
+        return y <= 0.03928 ? y / 12.92 : Math.pow((y + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    for (const c of effTheme.bg) {
+      const t = relLum(effTheme.text);
+      const b2 = relLum(c);
+      const ratio = (Math.max(t, b2) + 0.05) / (Math.min(t, b2) + 0.05);
+      if (ratio < 4.5) {
+        push({
+          code: 'E-COLOR-005', severity: 'error',
+          message: `浅色模式正文对比度不足（${ratio.toFixed(2)}:1 < 4.5:1；text ${effTheme.text} vs bg ${c}）`,
+          where: loc(opts, ['theme', 'text']),
+          facts: ['WCAG 相对亮度对比（正文 4.5:1 为常规可读下限）'],
+          hints: ['调深 text 或调浅 bg'],
+        });
+      }
     }
   }
 
@@ -298,6 +337,83 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
       const bad = toks.filter((t2) => !INTERP_OK.test(t2));
       if (bad.length > 0) {
         W('W-TEXT-001', ['scenes', si, 'layers', li, 'content'], `未知文本占位符 ${bad.join('、')} 将按字面显示`, ['支持：{frame}（帧号）、{t}/{T}/{lt}（秒，可带格式如 {t:.2f}）'], ['检查拼写；受支持列表：{frame} {t} {T} {lt}']);
+      }
+    });
+  });
+
+  // ---- v5：资产/字幕通路检查（反馈：image/video 静默失败，引擎服务不了的层必须报出）
+  const projDir = opts.file ? dirname(resolve(opts.file)) : process.cwd();
+  spec.scenes.forEach((sc, si) => {
+    sc.layers.forEach((ly, li) => {
+      if (ly.kind === 'video') {
+        push({
+          code: 'E-ASSET-002', severity: 'error',
+          message: `video 图层（scene=${sc.id} layer=${ly.id}）当前版本无加载通路——请改用 image 或序列帧`,
+          where: loc(opts, ['scenes', si, 'layers', li, 'kind']),
+          facts: ['image 已接资产管线（v5）；video 缺确定性丢帧方案'],
+          hints: ['序列帧 = 多张 image + window；或关注后续版本 video 支持'],
+        });
+      }
+      if (ly.kind === 'image') {
+        const src = String(ly.src ?? '');
+        let okAsset = true;
+        let detail = '';
+        if (src.startsWith('library://')) {
+          const r2 = resolveLibraryRefLite(src, kineHomeDir());
+          okAsset = !('error' in r2) && Boolean((r2 as { file: string | null }).file);
+          detail = okAsset ? `库文件 ${(r2 as { file: string }).file}` : 'error' in r2 ? r2.error.message : '库条目无 blob';
+        } else {
+          const abs = resolve(projDir, src);
+          okAsset = existsSync(abs);
+          detail = abs;
+        }
+        if (!okAsset) {
+          push({
+            code: 'E-ASSET-001', severity: 'error',
+            message: `image 资产不可解析：${src}（scene=${sc.id} layer=${ly.id}）`,
+            where: loc(opts, ['scenes', si, 'layers', li, 'src']),
+            facts: [`解析结果：${detail}`],
+            hints: ['相对路径以 timeline.yaml 所在目录为基准；库资产用 library://<id> 引用'],
+          });
+        }
+      }
+      if (ly.kind === 'subtitles') {
+        const cues = ly.cues ?? [];
+        if (!ly.src && cues.length === 0) {
+          push({
+            code: 'E-ASSET-001', severity: 'error',
+            message: `subtitles 层（scene=${sc.id} layer=${ly.id}）需要 src（SRT 路径）或内联 cues`,
+            where: loc(opts, ['scenes', si, 'layers', li]),
+          });
+        }
+        if (ly.src) {
+          const abs = resolve(projDir, ly.src);
+          if (!existsSync(abs)) {
+            push({
+              code: 'E-ASSET-001', severity: 'error',
+              message: `字幕 SRT 不可解析：${ly.src}`,
+              where: loc(opts, ['scenes', si, 'layers', li, 'src']),
+              facts: [`解析结果：${abs}`],
+              hints: ['相对路径以 timeline.yaml 所在目录为基准'],
+            });
+          }
+        }
+        let prevTo = -1;
+        let overlaps = 0;
+        for (const cu of [...cues].sort((a, b) => a.from - b.from)) {
+          if (cu.to <= cu.from) {
+            push({
+              code: 'E-SUB-001', severity: 'error',
+              message: `字幕 cue 时间非法（to ≤ from）：${cu.text.slice(0, 24)}`,
+              where: loc(opts, ['scenes', si, 'layers', li, 'cues']),
+            });
+          }
+          if (cu.from < prevTo) overlaps += 1;
+          prevTo = Math.max(prevTo, cu.to);
+        }
+        if (overlaps > 0) {
+          W('W-SUB-001', ['scenes', si, 'layers', li, 'cues'], `字幕 cue 有 ${overlaps} 处重叠（按顺序显示，后者覆盖）`, [`重叠 ${overlaps} 处`], ['整理 cues 时间轴避免重叠']);
+        }
       }
     });
   });
@@ -373,8 +489,9 @@ export function lint(spec: ProjectSpecT, raw: unknown, opts: LintOptions): Issue
       if (z1 > 1 && checkBox) {
         const cropX = ((1 - 1 / z1) / 2) * spec.output.width;
         const cropY = ((1 - 1 / z1) / 2) * spec.output.height;
-        const x0 = place.anchor === 'center' ? place.x - w / 2 : place.x;
-        const y0 = place.anchor === 'center' ? place.y - h / 2 : place.y;
+        const anP = place.anchor;
+        const x0 = place.x - (anP === 'center' ? w / 2 : anP === 'tr' || anP === 'br' ? w : 0);
+        const y0 = place.y - (anP === 'center' ? h / 2 : anP === 'bl' || anP === 'br' ? h : 0);
         if (x0 < cropX || y0 < cropY || x0 + w > spec.output.width - cropX || y0 + h > spec.output.height - cropY) {
           push({
             code: 'E-HUD-001', severity: 'error',

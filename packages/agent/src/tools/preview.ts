@@ -70,10 +70,12 @@ export async function toolPreview(ctx: AgentContext, opts: PreviewOptions): Prom
           `预览已生成：${r.file}`,
           `区间 t=${t0}s → ${(t0 + dur).toFixed(1)}s（${pt.scene ?? '-'} 幕内，T=${pt.T.toFixed(2)}s）`,
           mixFile ? '含音轨（成品形态：分辨率+音轨，可直接播放）' : '无音轨（音乐缺失或 --no-audio）',
+          ...(opts.keepFrames ? [`调试帧目录：${join(defaults.workDir, 'frames')}（PNG，可按帧查看）`] : []),
         ],
         hints: ['请播放预览确认效果；确认后 kine check → kine render'],
         nextActions: [
           { tool: 'kine.check', args: {}, reason: '断言集' },
+          { tool: 'kine.contact', args: { t0: Math.floor(t0), t1: Math.ceil(t0 + dur), count: 8 }, reason: '接触表：一眼看区间画面（反馈：预览后找帧不该是外部动作）' },
           { tool: 'kine.render', args: {}, reason: '全片出片' },
         ],
       }

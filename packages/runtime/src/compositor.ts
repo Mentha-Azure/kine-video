@@ -7,7 +7,7 @@ import type { KineIR, CompiledScene, LayerSpecT } from '@kine/dsl';
 import { resolveTheme, rgba, type ResolvedTheme } from './theme';
 import { getWidget } from './widgets-api';
 import { drawParticles } from './particles';
-import { drawTextLayer } from './text';
+import { drawCueText, drawTextLayer } from './text';
 import { drawFx } from './effects';
 import { drawTransition, type TransitionView } from './transitions';
 import { drawPost } from './post';
@@ -86,6 +86,7 @@ interface ViewArgs {
   frame: number;
   t: number;
   T: number;
+  missing?: Array<{ id: string; kind: string; src: string }>;
   collect?: (el: ProbeElement) => void;
   W: number;
   H: number;
@@ -163,8 +164,9 @@ function drawLayer(ctx: CanvasRenderingContext2D, layer: LayerSpecT, v: ViewArgs
       const ph = layer.place.h != null ? layer.place.h * ds : undefined;
       const bw = pw ?? (def?.defaultSize.w ?? 320) * ds;
       const bh = ph ?? (def?.defaultSize.h ?? 200) * ds;
-      const ox = layer.place.anchor === 'center' ? layer.place.x * ds - bw / 2 : layer.place.x * ds;
-      const oy = layer.place.anchor === 'center' ? layer.place.y * ds - bh / 2 : layer.place.y * ds;
+      const an = layer.place.anchor;
+      const ox = layer.place.x * ds - (an === 'center' ? bw / 2 : an === 'tr' || an === 'br' ? bw : 0);
+      const oy = layer.place.y * ds - (an === 'center' ? bh / 2 : an === 'bl' || an === 'br' ? bh : 0);
       ctx.save();
       ctx.translate(ox, oy);
       ctx.globalAlpha = alpha;
@@ -200,11 +202,14 @@ function drawLayer(ctx: CanvasRenderingContext2D, layer: LayerSpecT, v: ViewArgs
     }
     case 'text': {
       const bw = (layer.place.w ?? layer.style.max_width ?? (W * 0.6) / ds) * ds;
-      const centerX = layer.place.anchor === 'center';
+      const anT = layer.place.anchor;
+      const centerX = anT === 'center';
+      const rightAlign = anT === 'tr' || anT === 'br';
+      const vBottom = anT === 'bl' || anT === 'br';
       ctx.save();
       ctx.translate(layer.place.x * ds, layer.place.y * ds);
       ctx.globalAlpha = alpha;
-      const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX, frame: v.frame, t: v.t, T: v.T });
+      const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX, rightAlign, vBottom, frame: v.frame, t: v.t, T: v.T });
       recordBox(
         ctx,
         v.collect,
@@ -225,20 +230,17 @@ function drawLayer(ctx: CanvasRenderingContext2D, layer: LayerSpecT, v: ViewArgs
         : { w: 640, h: 360 };
       const bw = (place.w ?? natural.w) * ds;
       const bh = (place.h ?? natural.h) * ds;
-      const ox = place.anchor === 'center' ? place.x * ds - bw / 2 : place.x * ds;
-      const oy = place.anchor === 'center' ? place.y * ds - bh / 2 : place.y * ds;
+      const anI = place.anchor;
+      const ox = place.x * ds - (anI === 'center' ? bw / 2 : anI === 'tr' || anI === 'br' ? bw : 0);
+      const oy = place.y * ds - (anI === 'center' ? bh / 2 : anI === 'bl' || anI === 'br' ? bh : 0);
       ctx.save();
       ctx.translate(ox, oy);
       ctx.globalAlpha = alpha;
       let state = 'ok';
       if (!img) {
         state = 'missing-asset';
-        ctx.strokeStyle = rgba(theme.accent, 0.5);
-        ctx.lineWidth = 2;
-        ctx.strokeRect(0, 0, bw, bh);
-        ctx.fillStyle = rgba(theme.textDim, 0.8);
-        ctx.font = `${16 * ds}px ${theme.font}`;
-        ctx.fillText(`missing: ${src}`, 8 * ds, 24 * ds);
+        // v5：不再把提示画进投放盒（默认全出血负原点会藏到画外）——由 drawFrame 统一贴屏横幅提示
+        v.missing?.push({ id: layer.id, kind: layer.kind, src });
       } else {
         const scale = layer.fit === 'cover' ? Math.max(bw / natural.w, bh / natural.h) : Math.min(bw / natural.w, bh / natural.h);
         const dw = natural.w * scale;
@@ -248,6 +250,31 @@ function drawLayer(ctx: CanvasRenderingContext2D, layer: LayerSpecT, v: ViewArgs
       }
       recordBox(ctx, v.collect, { id: layer.id, kind: layer.kind, alpha: +alpha.toFixed(4), state }, { x: 0, y: 0, w: bw, h: bh });
       ctx.restore();
+      return;
+    }
+    case 'subtitles': {
+      const cues = layer.cues ?? [];
+      let active: { from: number; to: number; text: string } | null = null;
+      for (const cu of cues) {
+        if (v.t >= cu.from && v.t < cu.to) {
+          active = cu;
+          break;
+        }
+      }
+      const zone = layer.zone;
+      if (active) {
+        drawCueText(ctx, active.text, {
+          x: zone.x * ds,
+          y: zone.y * ds,
+          px: layer.style.size * theme.fontBase * theme.fontScale * ds * 1.06,
+          color: layer.style.color ?? theme.text,
+          maxW: layer.style.max_width ? layer.style.max_width * ds : W * 0.78,
+          font: theme.font,
+        });
+        recordBox(ctx, v.collect, { id: layer.id, kind: 'subtitles', alpha: +alpha.toFixed(4), state: `cue@${active.from.toFixed(2)}s`, measure: { cues_total: cues.length } }, { x: zone.x * ds - W * 0.39, y: zone.y * ds - 60 * ds, w: W * 0.78, h: 120 * ds });
+      } else {
+        recordBox(ctx, v.collect, { id: layer.id, kind: 'subtitles', alpha: +alpha.toFixed(4), state: 'idle', measure: { cues_total: cues.length } }, { x: 0, y: 0, w: 0, h: 0 });
+      }
       return;
     }
     case 'fx': {
@@ -309,6 +336,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, o: DrawFrameOptions): F
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
 
+  const missingAll: Array<{ id: string; kind: string; src: string }> = [];
+
   // 转场
   let transition: TransitionView | null = null;
   if (curShot && curShot.transition && curShot.transition.dur > 0 && shotIndex > 0 && lt < curShot.lt0 + curShot.transition.dur + EPS) {
@@ -330,15 +359,15 @@ export function drawFrame(ctx: CanvasRenderingContext2D, o: DrawFrameOptions): F
     scrACtx.globalAlpha = 1;
     scrACtx.fillStyle = theme.bg[0];
     scrACtx.fillRect(0, 0, W, H);
-    drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, t, T: prevShot.T1 - 1e-3, W, H });
+    drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, t, T: prevShot.T1 - 1e-3, W, H, missing: missingAll });
     scrBCtx.setTransform(1, 0, 0, 1, 0, 0);
     scrBCtx.globalAlpha = 1;
     scrBCtx.fillStyle = theme.bg[0];
     scrBCtx.fillRect(0, 0, W, H);
-    drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
+    drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H, missing: missingAll });
     drawTransition(ctx, scrA, scrB, transition, theme, W, H);
   } else {
-    drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
+    drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H, missing: missingAll });
   }
 
   // 幕级 effects
@@ -373,6 +402,31 @@ export function drawFrame(ctx: CanvasRenderingContext2D, o: DrawFrameOptions): F
   // 后处理（永远贴屏）
   const post = postAt(cam, theme, headFlash);
   drawPost(ctx, W, H, theme, post, scene.post);
+
+  // v5：资产缺失贴屏横幅（默认 place 全出血负原点会把它藏到画外，必须贴屏喊出来）
+  if (missingAll.length > 0) {
+    const uniq = [...new Map(missingAll.map((m) => [m.src, m])).values()];
+    const dsB = theme.S / 1080;
+    const barH = 36 * dsB;
+    const msg = `⚠ 资产未加载 ${uniq.length} 项：${uniq.slice(0, 3).map((m) => m.src).join('、')}${uniq.length > 3 ? ' …' : ''}`;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.font = `${16 * dsB}px ${theme.font}`;
+    const tw = ctx.measureText(msg).width;
+    const bw2 = Math.min(W - 40 * dsB, tw + 28 * dsB);
+    const x0 = (W - bw2) / 2;
+    const y0 = H * 0.42;
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(x0, y0, bw2, barH);
+    ctx.strokeStyle = rgba(theme.accent, 0.9);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x0, y0, bw2, barH);
+    ctx.fillStyle = rgba(theme.accent, 0.95);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(msg, x0 + 14 * dsB, y0 + barH / 2);
+    ctx.restore();
+  }
 
   return {
     t: +t.toFixed(6),

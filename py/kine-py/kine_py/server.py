@@ -91,16 +91,16 @@ def dispatch(req: dict) -> dict:
         return {'file': out, **info}
 
     if cmd == 'density':
-        return mmod.density(_require(req, 'png'), lit=float(req.get('lit', 40.0)))
+        return mmod.density(_require(req, 'png'), lit=float(req.get('lit', 40.0)), invert=bool(req.get('invert', False)))
 
     if cmd == 'frame_diff':
         return mmod.frame_diff(_require(req, 'a'), _require(req, 'b'), eps=float(req.get('eps', 8.0)))
 
     if cmd == 'edge_band':
-        return mmod.edge_band(_require(req, 'png'), band=int(req.get('band', 34)), lit=float(req.get('lit', 40.0)))
+        return mmod.edge_band(_require(req, 'png'), band=int(req.get('band', 34)), lit=float(req.get('lit', 40.0)), invert=bool(req.get('invert', False)))
 
     if cmd == 'black_level':
-        return mmod.black_level(_require(req, 'png'))
+        return mmod.black_level(_require(req, 'png'), pick=str(req.get('pick', 'dark')))
 
     if cmd == 'transition_spike':
         return mmod.transition_spike(_require(req, 'pngs'), eps=float(req.get('eps', 8.0)), factor=float(req.get('factor', 2.2)))

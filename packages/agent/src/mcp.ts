@@ -1,7 +1,8 @@
 // MCP server（server 名：kine）——与 CLI 同一 TOOLS 注册表的薄层
 // 每工具一个 MCP tool，名称 kine.<tool>；render 支持 progress notification；
 // resources 暴露 kine://project/info、kine://map、kine://baseline。
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -166,6 +167,7 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
       version: str('输出版本名（如 v0.2）'),
       audio: bool('混流音轨（默认 true）'),
       preset: str('编码档位 preset（ultrafast…veryslow；默认取规格 slow；缓存按档位隔离）'),
+      workDir: str('渲染工作目录（等价 KINE_WORK_DIR；缺省 工程/.kine/work/<visualHash8>）'),
     },
     additionalProperties: false,
   },
@@ -293,15 +295,23 @@ function resolveDirMemo(input: string, explicit: boolean): { dir: string; note?:
   return val;
 }
 
-/** v4：服务器版本戳（含 git 短哈希，便于确认常驻进程加载的是哪版代码——反馈：改源码后需重启才生效，难确认） */
+/** v4/v5：服务器版本戳（git 短哈希 + 宿主 bundle 哈希——一眼确认常驻进程加载的是哪版代码与哪个 bundle） */
 function buildStamp(): string {
+  let h = '';
   try {
     const r = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: kineRepoRoot(), encoding: 'utf8', timeout: 3000 });
-    const h = (r.stdout ?? '').trim();
-    return h ? `0.1.0+${h}` : '0.1.0';
+    h = (r.stdout ?? '').trim();
   } catch {
-    return '0.1.0';
+    /* noop */
   }
+  let b = '';
+  try {
+    const bundle = path.join(kineRepoRoot(), 'packages', 'render', 'assets', 'kine-host.js');
+    if (existsSync(bundle)) b = createHash('sha256').update(readFileSync(bundle)).digest('hex').slice(0, 8);
+  } catch {
+    /* noop */
+  }
+  return `0.1.0${h ? `+${h}` : ''}${b ? `.bundle-${b}` : ''}`;
 }
 
 export async function runMcpServer(dir: string, opts: { via?: 'explicit' | 'ancestor' | 'scan' | 'registry' | 'direct' } = {}): Promise<void> {

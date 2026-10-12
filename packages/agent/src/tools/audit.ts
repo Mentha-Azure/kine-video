@@ -97,7 +97,18 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
         if (ly.kind !== 'widget') continue;
         const widget = String(ly.widget ?? '');
         const meta = WIDGET_META[widget];
-        if (!meta) continue; // 未注册 widget 由运行时（占位框）报出，静态层不重复
+        if (!meta) {
+          // v5：fail-open 修复——未注册/元数据缺失时必须警告（旧服务 + 新 widget 场景曾静默停止校验）
+          wWidget.push({
+            code: 'W-WIDGET-001',
+            message: `${widget} 不在元数据注册表（服务/引擎版本不同步？）— props 未校验`,
+            scene: sid,
+            layer: String(ly.id ?? '?'),
+            prop: '*',
+            hint: '重建宿主 bundle 并重启 MCP 服务：npx tsx tools/build-web.ts；kine widgets list 应包含该 widget',
+          });
+          continue;
+        }
         const props = (ly.props as Record<string, unknown> | undefined) ?? {};
         const known = new Set(meta.props.map((p) => p.name));
         for (const k of Object.keys(props)) {
@@ -157,9 +168,21 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
   const ms = Date.now() - t0;
   const pass = errorCount === 0;
 
+  // v5：错误分类——blocking（引擎无法编译/运行）vs policy（设计纪律，可调整或显式接受）
+  const blockingCodes = /^E-(SCHEMA|PURE|RUNTIME|ID|TIME|ASSET|SUB)-/;
+  const blockingErrors = syntaxErrors.filter((i) => blockingCodes.test(i.code));
+  const policyErrors = syntaxErrors.filter((i) => !blockingCodes.test(i.code));
+
   const data = {
     verdict: pass ? 'PASS' : 'FAIL',
-    counts: { syntax: syntaxErrors.length, purity: purity.length, runtime: runtimeErrors.length, warnings: warns.length + wWidget.length },
+    counts: {
+      syntax: syntaxErrors.length,
+      purity: purity.length,
+      runtime: runtimeErrors.length,
+      warnings: warns.length + wWidget.length,
+      blocking: blockingErrors.length + purity.length + runtimeErrors.length,
+      policy: policyErrors.length,
+    },
     syntaxErrors: syntaxErrors.slice(0, 50).map((i) => ({
       code: i.code,
       message: i.message,
@@ -177,13 +200,14 @@ export async function toolAudit(ctx: AgentContext, opts: AuditOptions = {}): Pro
   };
 
   const facts: string[] = [
+    `错误分类：blocking ${blockingErrors.length + purity.length + runtimeErrors.length}（引擎无法编译/运行）/ policy ${policyErrors.length}（设计纪律：可调整或显式接受）/ 警告 ${warns.length + wWidget.length}`,
     `语法层：错误 ${syntaxErrors.length} / 警告 ${warns.length}`,
     `purity 扫描：${purity.length} 个违规（runtime/widgets 源码）`,
     opts.syntaxOnly ? '运行时：已跳过（--syntax-only）' : `运行时：${steps} 步全轴扫描，错误 ${runtimeErrors.length}`,
     pass ? `audit PASS（${ms}ms）` : `audit FAIL：共 ${errorCount} 个错误`,
   ];
   if (wWidget.length > 0) {
-    facts.push(`W-WIDGET-001：${wWidget.length} 个 widget props 未知键（将被静默忽略）`);
+    facts.push(`W-WIDGET-001：${wWidget.length} 个 widget 参数问题（未注册 widget / 未知 props 键；未知键按忽略处理）`);
     for (const w2 of wWidget.slice(0, 5)) facts.push(`  ${w2.message} → ${w2.hint}`);
   }
   for (const e of runtimeErrors.slice(0, 5)) {

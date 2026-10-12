@@ -59,7 +59,14 @@ export const RULES: RuleInfo[] = [
   { code: 'W-TEXT-001', severity: 'warn', scope: 'text.content', meaning: '文本层含未知占位符（将被按字面显示）——v4 插值支持 {frame} {t} {T} {lt}（可带格式如 {t:.2f}）', fix: '检查拼写；受支持列表：{frame} {t} {T} {lt}' },
   { code: 'W-WIDGET-001', severity: 'warn', scope: 'widget.props', meaning: 'widget 不认识该 props 键（会被静默忽略——v4：对照 WIDGET_META 静态检查）', fix: 'kine widgets info <widget> 查看支持参数与默认值' },
   { code: 'E-PROJ-006', severity: 'error', scope: 'dir 解析', meaning: '写入类命令（edit/rollback/style）在「自动解析的工程目录」（向下扫描/登记表回退）上被拒绝执行——防不传 dir 时误改意外工程（v4 反馈）', fix: '显式指定：kine <命令> --dir <工程目录>（MCP 传 dir 参数）' },
-  { code: 'E-RENDER-007', severity: 'error', scope: 'render 磁盘', meaning: '工作盘剩余空间不足 1GB，渲染中止以免写坏缓存（v4 反馈：C 盘收紧时渲染脆弱）', fix: 'kine cache gc 清理旧分片；或设置 KINE_WORK_DIR=D:\\kine-work 重定向工作目录' },
+  { code: 'E-RENDER-007', severity: 'error', scope: 'render 磁盘', meaning: '工作盘剩余空间不足 1GB，渲染中止以免写坏缓存（v4 反馈：C 盘收紧时渲染脆弱）', fix: 'kine cache gc 清理旧分片；或设置 KINE_WORK_DIR=D:\\kine-work 重定向工作目录（也可 render --work-dir）' },
+  // ---- v5 新增（浅色模式 / 资产管线 / 字幕）
+  { code: 'E-COLOR-005', severity: 'error', scope: 'theme.mode=light', meaning: '浅色模式正文对比度 <4.5:1（WCAG 相对亮度）——浅底深字的可读性下限', fix: '调深 text 或调浅 bg；色板注册期同样校验（mode: light 的色板）' },
+  { code: 'E-ASSET-001', severity: 'error', scope: 'image/subtitles 资产', meaning: '资产不可解析（本地路径缺失或库条目无 blob）——image 已接加载管线（v5），缺资产在 audit 期拦下', fix: '相对路径以 timeline.yaml 为基准；库资产用 library://<id>；或放入 assets/' },
+  { code: 'E-ASSET-002', severity: 'error', scope: 'video 图层', meaning: 'video 图层当前版本无加载通路（缺确定性丢帧方案）——明确报错而非静默当 missing（v5 反馈）', fix: '改用 image 或序列帧（多 image + window）；video 支持见后续版本' },
+  { code: 'E-SUB-001', severity: 'error', scope: 'subtitles', meaning: '字幕 cue 时间非法（to≤from）或 SRT 无可解析 cue', fix: '检查 SRT 时间行（00:00:01,200 --> 00:00:02,400）或 cues 的 from/to' },
+  { code: 'W-SUB-001', severity: 'warn', scope: 'subtitles', meaning: '字幕 cue 有重叠（按顺序显示，后者覆盖）', fix: '整理 cues 时间轴避免重叠' },
+  { code: 'W-SUB-002', severity: 'warn', scope: 'subtitles', meaning: 'SRT 有块无法解析（已跳过）', fix: '检查该块的编号/时间行/空行格式' },
   // ---- 资源库 / 风格
   { code: 'E-LIB-001', severity: 'error', scope: 'library 引用', meaning: 'library:// 引用未找到条目', fix: 'kine library list 查看；或先 kine library add' },
   { code: 'E-LIB-002', severity: 'error', scope: 'library 引用', meaning: '引用歧义（标签/模糊命中多个候选）', fix: '用完整 id 或唯一 @tag 精确引用' },

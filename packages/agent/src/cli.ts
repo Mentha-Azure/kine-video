@@ -171,6 +171,7 @@ function buildArgs(tool: string, p: Parsed): unknown {
       return {
         range: flagStr(p, 'range'),
         preset: flagStr(p, 'preset'),
+        workDir: flagStr(p, 'work-dir'),
         workers: flagNum(p, 'workers'),
         noCache: flagBool(p, 'no-cache'),
         keepFrames: flagBool(p, 'keep-frames'),

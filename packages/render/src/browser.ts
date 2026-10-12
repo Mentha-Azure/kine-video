@@ -96,7 +96,7 @@ export interface ScanError {
 
 /** 页面内运行时接口（host bundle 注入的 window.__kine） */
 interface PageKine {
-  load(ir: unknown): void;
+  load(ir: unknown, assets?: unknown): void | Promise<void>;
   jump(T: number): void;
   probe(T: number): unknown;
   stateHash(T: number): string;
@@ -118,7 +118,7 @@ export interface KineSession {
   page: Page;
   context: BrowserContext;
   info: BrowserInfo;
-  load(ir: KineIR | unknown): Promise<void>;
+  load(ir: KineIR | unknown, assets?: Array<{ src: string; dataUrl: string }>): Promise<void>;
   jump(T: number): Promise<void>;
   probe(T: number): Promise<unknown>;
   stateHash(T: number): Promise<string>;
@@ -190,8 +190,11 @@ export async function openSession(opts: SessionOptions): Promise<KineSession> {
     context: ctx,
     info,
     consoleErrors: () => [...consoleErrors],
-    async load(ir) {
-      await page.evaluate((irJson) => (window as unknown as { __kine: PageKine }).__kine.load(irJson), ir as never);
+    async load(ir, assets) {
+      await page.evaluate(
+        (payload) => (window as unknown as { __kine: PageKine }).__kine.load(payload.ir, payload.assets),
+        { ir: ir as never, assets: (assets ?? null) as never },
+      );
     },
     async jump(T) {
       await page.evaluate((t) => (window as unknown as { __kine: PageKine }).__kine.jump(t), T);

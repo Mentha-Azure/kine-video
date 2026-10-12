@@ -117,6 +117,9 @@
   // packages/runtime/src/widgets-api.ts
   var registry = /* @__PURE__ */ new Map();
   function registerWidget(def) {
+    if (registry.has(def.name)) {
+      console.warn(`[kine] registerWidget \u91CD\u540D\uFF1A${def.name} \u5DF2\u5B58\u5728\uFF0C\u672C\u6B21\u6CE8\u518C\u5C06\u8986\u76D6\uFF08\u5EFA\u8BAE\u547D\u540D\u7A7A\u95F4\u524D\u7F00\uFF09`);
+    }
     registry.set(def.name, def);
   }
   function getWidget(name) {
@@ -218,7 +221,7 @@
     }
     const text = content.slice(0, visible);
     const maxW = layer.style.max_width ? layer.style.max_width * ds : boxW;
-    const lineH = px * 1.4;
+    const lineH = px * (layer.style.line_height ?? 1.4);
     const lines = [];
     if (layer.style.max_width) {
       let cur = "";
@@ -238,6 +241,7 @@
     const blockW = lineW;
     const lineX = (lw) => {
       if (opts?.centerX) return -blockW / 2;
+      if (opts?.rightAlign) return -blockW;
       const align = layer.style.align;
       if (align === "center") return -blockW / 2;
       if (align === "right") return -blockW;
@@ -249,24 +253,25 @@
       if (innerAlign === "right") return blockW - lw;
       return 0;
     };
+    const y0 = opts?.vBottom ? -(lines.length * lineH) : 0;
     ctx.fillStyle = color;
     for (let i = 0; i < lines.length; i++) {
       const lw = ctx.measureText(lines[i]).width;
-      ctx.fillText(lines[i], lineX(lw) + innerX(lw), i * lineH);
+      ctx.fillText(lines[i], lineX(lw) + innerX(lw), y0 + i * lineH);
     }
     let cursorW = 0;
     if (typing) {
       const lastW = ctx.measureText(lines[lines.length - 1]).width;
       const blink = 0.5 + 0.5 * Math.sin(Math.PI * 2 * (lt * 1.4));
       ctx.globalAlpha = 0.35 + 0.5 * blink;
-      ctx.fillText("\u258D", lineX(lastW) + innerX(lastW) + lastW + px * 0.08, (lines.length - 1) * lineH);
+      ctx.fillText("\u258D", lineX(lastW) + innerX(lastW) + lastW + px * 0.08, y0 + (lines.length - 1) * lineH);
       cursorW = px * 0.7;
       ctx.globalAlpha = 1;
     }
     const boxX = opts?.centerX ? -blockW / 2 : lineX(blockW);
     const state = typing ? "typing" : "done";
     return {
-      box: { x: boxX, y: 0, w: blockW + cursorW, h: lines.length * lineH },
+      box: { x: boxX, y: y0, w: blockW + cursorW, h: lines.length * lineH },
       visibleChars: visible,
       state,
       measure: {
@@ -276,6 +281,35 @@
         line_height: +lineH.toFixed(2)
       }
     };
+  }
+  function drawCueText(ctx, text, o) {
+    ctx.save();
+    ctx.font = `${o.weight ?? 600} ${o.px}px ${o.font}`;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    const lines = [];
+    for (const para of text.split("\n")) {
+      let cur = "";
+      for (const ch of para) {
+        const test = cur + ch;
+        if (ctx.measureText(test).width > o.maxW && cur.length > 0) {
+          lines.push(cur);
+          cur = ch;
+        } else cur = test;
+      }
+      lines.push(cur);
+    }
+    const lineH = o.px * 1.4;
+    const blockH = lines.length * lineH;
+    const y0c = -blockH / 2;
+    ctx.translate(o.x, o.y);
+    ctx.fillStyle = o.color;
+    for (let i = 0; i < lines.length; i++) {
+      const lw = ctx.measureText(lines[i]).width;
+      ctx.fillText(lines[i], -lw / 2, y0c + i * lineH);
+    }
+    ctx.restore();
+    return { lineCount: lines.length, blockH };
   }
 
   // packages/runtime/src/effects.ts
@@ -697,8 +731,9 @@
         const ph = layer.place.h != null ? layer.place.h * ds : void 0;
         const bw = pw ?? (def?.defaultSize.w ?? 320) * ds;
         const bh = ph ?? (def?.defaultSize.h ?? 200) * ds;
-        const ox = layer.place.anchor === "center" ? layer.place.x * ds - bw / 2 : layer.place.x * ds;
-        const oy = layer.place.anchor === "center" ? layer.place.y * ds - bh / 2 : layer.place.y * ds;
+        const an = layer.place.anchor;
+        const ox = layer.place.x * ds - (an === "center" ? bw / 2 : an === "tr" || an === "br" ? bw : 0);
+        const oy = layer.place.y * ds - (an === "center" ? bh / 2 : an === "bl" || an === "br" ? bh : 0);
         ctx.save();
         ctx.translate(ox, oy);
         ctx.globalAlpha = alpha;
@@ -734,11 +769,14 @@
       }
       case "text": {
         const bw = (layer.place.w ?? layer.style.max_width ?? W * 0.6 / ds) * ds;
-        const centerX = layer.place.anchor === "center";
+        const anT = layer.place.anchor;
+        const centerX = anT === "center";
+        const rightAlign = anT === "tr" || anT === "br";
+        const vBottom = anT === "bl" || anT === "br";
         ctx.save();
         ctx.translate(layer.place.x * ds, layer.place.y * ds);
         ctx.globalAlpha = alpha;
-        const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX, frame: v.frame, t: v.t, T: v.T });
+        const res = drawTextLayer(ctx, layer, lt, theme, bw, { centerX, rightAlign, vBottom, frame: v.frame, t: v.t, T: v.T });
         recordBox(
           ctx,
           v.collect,
@@ -759,20 +797,16 @@
         } : { w: 640, h: 360 };
         const bw = (place.w ?? natural.w) * ds;
         const bh = (place.h ?? natural.h) * ds;
-        const ox = place.anchor === "center" ? place.x * ds - bw / 2 : place.x * ds;
-        const oy = place.anchor === "center" ? place.y * ds - bh / 2 : place.y * ds;
+        const anI = place.anchor;
+        const ox = place.x * ds - (anI === "center" ? bw / 2 : anI === "tr" || anI === "br" ? bw : 0);
+        const oy = place.y * ds - (anI === "center" ? bh / 2 : anI === "bl" || anI === "br" ? bh : 0);
         ctx.save();
         ctx.translate(ox, oy);
         ctx.globalAlpha = alpha;
         let state = "ok";
         if (!img) {
           state = "missing-asset";
-          ctx.strokeStyle = rgba(theme.accent, 0.5);
-          ctx.lineWidth = 2;
-          ctx.strokeRect(0, 0, bw, bh);
-          ctx.fillStyle = rgba(theme.textDim, 0.8);
-          ctx.font = `${16 * ds}px ${theme.font}`;
-          ctx.fillText(`missing: ${src}`, 8 * ds, 24 * ds);
+          v.missing?.push({ id: layer.id, kind: layer.kind, src });
         } else {
           const scale = layer.fit === "cover" ? Math.max(bw / natural.w, bh / natural.h) : Math.min(bw / natural.w, bh / natural.h);
           const dw = natural.w * scale;
@@ -782,6 +816,31 @@
         }
         recordBox(ctx, v.collect, { id: layer.id, kind: layer.kind, alpha: +alpha.toFixed(4), state }, { x: 0, y: 0, w: bw, h: bh });
         ctx.restore();
+        return;
+      }
+      case "subtitles": {
+        const cues = layer.cues ?? [];
+        let active = null;
+        for (const cu of cues) {
+          if (v.t >= cu.from && v.t < cu.to) {
+            active = cu;
+            break;
+          }
+        }
+        const zone = layer.zone;
+        if (active) {
+          drawCueText(ctx, active.text, {
+            x: zone.x * ds,
+            y: zone.y * ds,
+            px: layer.style.size * theme.fontBase * theme.fontScale * ds * 1.06,
+            color: layer.style.color ?? theme.text,
+            maxW: layer.style.max_width ? layer.style.max_width * ds : W * 0.78,
+            font: theme.font
+          });
+          recordBox(ctx, v.collect, { id: layer.id, kind: "subtitles", alpha: +alpha.toFixed(4), state: `cue@${active.from.toFixed(2)}s`, measure: { cues_total: cues.length } }, { x: zone.x * ds - W * 0.39, y: zone.y * ds - 60 * ds, w: W * 0.78, h: 120 * ds });
+        } else {
+          recordBox(ctx, v.collect, { id: layer.id, kind: "subtitles", alpha: +alpha.toFixed(4), state: "idle", measure: { cues_total: cues.length } }, { x: 0, y: 0, w: 0, h: 0 });
+        }
         return;
       }
       case "fx": {
@@ -843,6 +902,7 @@
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
+    const missingAll = [];
     let transition = null;
     if (curShot && curShot.transition && curShot.transition.dur > 0 && shotIndex > 0 && lt < curShot.lt0 + curShot.transition.dur + EPS2) {
       const d = Math.max(0, Math.min(1, (lt - curShot.lt0) / curShot.transition.dur));
@@ -861,15 +921,15 @@
       scrACtx.globalAlpha = 1;
       scrACtx.fillStyle = theme.bg[0];
       scrACtx.fillRect(0, 0, W, H);
-      drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, t, T: prevShot.T1 - 1e-3, W, H });
+      drawView(scrACtx, { scene, layers: layersOf(prevShot), lt: ltOld, cam: camOld, theme, rng, assets: o.assets, frame, t, T: prevShot.T1 - 1e-3, W, H, missing: missingAll });
       scrBCtx.setTransform(1, 0, 0, 1, 0, 0);
       scrBCtx.globalAlpha = 1;
       scrBCtx.fillStyle = theme.bg[0];
       scrBCtx.fillRect(0, 0, W, H);
-      drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
+      drawView(scrBCtx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H, missing: missingAll });
       drawTransition(ctx, scrA, scrB, transition, theme, W, H);
     } else {
-      drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H });
+      drawView(ctx, { scene, layers: layersOf(curShot), lt, cam, theme, rng, assets: o.assets, frame, t, T, collect: o.collect, W, H, missing: missingAll });
     }
     const effects = [];
     for (const ef of scene.effects) {
@@ -898,6 +958,29 @@
     }
     const post = postAt(cam, theme, headFlash);
     drawPost(ctx, W, H, theme, post, scene.post);
+    if (missingAll.length > 0) {
+      const uniq = [...new Map(missingAll.map((m) => [m.src, m])).values()];
+      const dsB = theme.S / 1080;
+      const barH = 36 * dsB;
+      const msg = `\u26A0 \u8D44\u4EA7\u672A\u52A0\u8F7D ${uniq.length} \u9879\uFF1A${uniq.slice(0, 3).map((m) => m.src).join("\u3001")}${uniq.length > 3 ? " \u2026" : ""}`;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.font = `${16 * dsB}px ${theme.font}`;
+      const tw = ctx.measureText(msg).width;
+      const bw2 = Math.min(W - 40 * dsB, tw + 28 * dsB);
+      const x0 = (W - bw2) / 2;
+      const y0 = H * 0.42;
+      ctx.fillStyle = "rgba(0,0,0,0.72)";
+      ctx.fillRect(x0, y0, bw2, barH);
+      ctx.strokeStyle = rgba(theme.accent, 0.9);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x0, y0, bw2, barH);
+      ctx.fillStyle = rgba(theme.accent, 0.95);
+      ctx.textBaseline = "middle";
+      ctx.fillText(msg, x0 + 14 * dsB, y0 + barH / 2);
+      ctx.restore();
+    }
     return {
       t: +t.toFixed(6),
       T: +T.toFixed(6),
@@ -1033,6 +1116,203 @@
     const x = Math.floor(clamp(v, 0, 1) * 255.999);
     return HEXD[x >> 4 & 15] + HEXD[x & 15];
   }
+
+  // packages/widgets/src/chart.ts
+  var nums = (s) => String(s ?? "").split(/[,\s]+/).map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  var strs = (s) => String(s ?? "").split("|").map((x) => x.trim()).filter((x) => x.length > 0);
+  registerWidget({
+    name: "chart",
+    defaultSize: { w: 640, h: 300 },
+    draw(c) {
+      const { ctx, w, h, theme } = c;
+      const ds = c.env.ds;
+      const kind = String(P(c.props, "kind", "bars"));
+      const raw = nums(c.props.values);
+      if (raw.length === 0) {
+        c.report({ state: "empty" });
+        return;
+      }
+      const labels = strs(c.props.labels);
+      const bins = Math.max(0, Math.round(Number(P(c.props, "bins", 0))));
+      let vals = raw;
+      if (kind === "bars" && bins > 0 && bins < raw.length) {
+        const out = [];
+        const per = raw.length / bins;
+        for (let i = 0; i < bins; i++) {
+          const a = Math.floor(i * per);
+          const b = Math.max(a + 1, Math.floor((i + 1) * per));
+          const slice = raw.slice(a, b);
+          out.push(slice.reduce((x, y) => x + y, 0) / slice.length);
+        }
+        vals = out;
+      }
+      const n = vals.length;
+      const vmax = Number(P(c.props, "max", 0));
+      const vmin = Number(P(c.props, "min", 0));
+      const top = vmax > vmin ? vmax : Math.max(...vals) * 1.08;
+      const reqGrid = Math.max(0, Math.round(Number(P(c.props, "grid", 4))));
+      const reveal = Math.max(0.01, Number(P(c.props, "reveal", 1.2)));
+      const mark = Math.round(Number(P(c.props, "mark", -1)));
+      const markLabel = String(P(c.props, "mark_label", ""));
+      const showValues = Number(P(c.props, "show_values", 0)) === 1;
+      const digits = Math.max(0, Math.round(Number(P(c.props, "digits", 1))));
+      const suffix = String(P(c.props, "suffix", ""));
+      const dots = Number(P(c.props, "dots", 0)) === 1;
+      const axis = Number(P(c.props, "axis", 1)) === 1;
+      const grid = kind === "bars" && labels.length > 0 ? Math.min(reqGrid, 3) : reqGrid;
+      const padTop = showValues || markLabel ? 30 * ds : 8 * ds;
+      const padBottom = labels.length > 0 ? 40 * ds : 8 * ds;
+      const y0 = padTop;
+      const y1 = h - padBottom;
+      const sy = (v) => lerp(y1, y0, clamp((v - vmin) / Math.max(1e-9, top - vmin), 0, 1));
+      const prog = smooth3(clamp(c.t / reveal, 0, 1));
+      ctx.save();
+      if (grid > 0) {
+        ctx.strokeStyle = rgba(theme.textDim, 0.22);
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3 * ds, 5 * ds]);
+        for (let i = 0; i <= grid; i++) {
+          const y = lerp(y1, y0, i / grid);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+      if (axis) {
+        ctx.strokeStyle = rgba(theme.textDim, 0.45);
+        ctx.lineWidth = Math.max(1, 1.5 * ds);
+        ctx.beginPath();
+        ctx.moveTo(0, y1);
+        ctx.lineTo(w, y1);
+        ctx.stroke();
+      }
+      if (kind === "bars") {
+        const gapR = clamp(Number(P(c.props, "gap", 0.34)), 0, 0.8);
+        const slot = w / n;
+        const bw = slot * (1 - gapR);
+        const stagger = reveal * 0.45 / Math.max(1, n);
+        const dur = Math.max(0.12, reveal * 0.55);
+        for (let i = 0; i < n; i++) {
+          const p = smooth3(clamp((c.t - i * stagger) / dur, 0, 1));
+          const x = i * slot + (slot - bw) / 2;
+          const bh = Math.max(1, (y1 - sy(vals[i])) * p);
+          const isMark = i === mark;
+          ctx.fillStyle = rgba(isMark ? theme.accent : theme.textDim, isMark ? 0.92 : 0.5);
+          ctx.fillRect(x, y1 - bh, bw, bh);
+          if (isMark) ctx.fillRect(x, y1 - bh - 3 * ds, bw, 3 * ds);
+          if (showValues && p > 0.6) {
+            ctx.fillStyle = rgba(isMark ? theme.accent : theme.textDim, 0.95);
+            ctx.font = font(c, 22 * ds, isMark ? 600 : 400);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText(vals[i].toFixed(digits) + suffix, x + bw / 2, y1 - bh - 9 * ds);
+          }
+          if (labels.length > 0 && i < labels.length) {
+            ctx.fillStyle = rgba(isMark ? theme.accent : theme.textDim, 0.9);
+            ctx.font = font(c, 20 * ds, 400);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText(labels[i], x + bw / 2, h - 12 * ds);
+          }
+        }
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.restore();
+        c.report({ state: "bars", measure: { bins: n, max: top } });
+        return;
+      }
+      const px = (i) => n === 1 ? w / 2 : i / (n - 1) * w;
+      const py = (v) => sy(v);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, Math.max(1e-3, w * prog), h);
+      ctx.clip();
+      if (kind === "steps") {
+        const stroke = new Path2D();
+        stroke.moveTo(0, py(vals[0]));
+        for (let i = 1; i < n; i++) {
+          stroke.lineTo(px(i), py(vals[i - 1]));
+          stroke.lineTo(px(i), py(vals[i]));
+        }
+        if (n > 1) stroke.lineTo(w, py(vals[n - 1]));
+        const fill = new Path2D(stroke);
+        fill.lineTo(w, y1);
+        fill.lineTo(0, y1);
+        fill.closePath();
+        ctx.fillStyle = rgba(theme.accent, 0.13);
+        ctx.fill(fill);
+        ctx.strokeStyle = rgba(theme.accent, 0.95);
+        ctx.lineWidth = Math.max(1.2, 2.2 * ds);
+        ctx.stroke(stroke);
+      } else {
+        const path = new Path2D();
+        path.moveTo(px(0), py(vals[0]));
+        if (Number(P(c.props, "smooth", 0)) === 1 && n > 2) {
+          for (let i = 1; i < n; i++) {
+            const mx = (px(i - 1) + px(i)) / 2;
+            path.quadraticCurveTo(mx, py(vals[i - 1]), px(i), py(vals[i]));
+          }
+        } else {
+          for (let i = 1; i < n; i++) path.lineTo(px(i), py(vals[i]));
+        }
+        if (kind === "area") {
+          const fill = new Path2D(path);
+          fill.lineTo(px(n - 1), y1);
+          fill.lineTo(px(0), y1);
+          fill.closePath();
+          ctx.fillStyle = rgba(theme.accent, 0.14);
+          ctx.fill(fill);
+        }
+        ctx.strokeStyle = rgba(theme.accent, 0.95);
+        ctx.lineWidth = Math.max(1.2, 2.2 * ds);
+        ctx.stroke(path);
+        if (dots) {
+          for (let i = 0; i < n; i++) {
+            ctx.beginPath();
+            ctx.arc(px(i), py(vals[i]), 2.6 * ds, 0, Math.PI * 2);
+            ctx.fillStyle = rgba(theme.accent, 0.9);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
+      if (mark >= 0 && mark < n) {
+        ctx.strokeStyle = rgba(theme.accent, 0.35);
+        ctx.lineWidth = 1 * ds;
+        ctx.beginPath();
+        ctx.moveTo(px(mark), py(vals[mark]));
+        ctx.lineTo(px(mark), y1);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(px(mark), py(vals[mark]), 4.2 * ds, 0, Math.PI * 2);
+        ctx.fillStyle = rgba(theme.accent, 1);
+        ctx.fill();
+        if (markLabel) {
+          ctx.fillStyle = rgba(theme.accent, 0.95);
+          ctx.font = font(c, 22 * ds, 600);
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText(markLabel, px(mark), py(vals[mark]) - 12 * ds);
+        }
+      }
+      if (labels.length > 0) {
+        ctx.fillStyle = rgba(theme.textDim, 0.9);
+        ctx.font = font(c, 20 * ds, 400);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        for (let i = 0; i < Math.min(labels.length, n); i++) {
+          const lx = n === labels.length ? px(i) : px(Math.round(i * (n - 1) / Math.max(1, labels.length - 1)));
+          ctx.fillText(labels[i], lx, h - 12 * ds);
+        }
+      }
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.restore();
+      c.report({ state: kind, measure: { points: n, max: top } });
+    }
+  });
 
   // packages/widgets/src/bd1.ts
   registerWidget({
@@ -2391,6 +2671,29 @@
   // packages/widgets/src/meta.ts
   var P2 = (name, type, def, desc) => ({ name, type, default: def, desc });
   var WIDGET_META = {
+    chart: {
+      desc: "\u6570\u636E\u56FE\u8868\uFF1Abars\uFF08\u67F1/\u76F4\u65B9\uFF0C\u53EF bins \u5206\u7BB1\uFF09\u3001area\uFF08\u9762\u79EF\uFF09\u3001line\uFF08\u6298\u7EBF\uFF09\u3001steps\uFF08\u9636\u68AF\u7D2F\u8BA1\uFF09\uFF1B\u7F51\u683C + \u57FA\u7EBF + \u6807\u7B7E + \u5F3A\u8C03\u6807\u8BB0 + \u6570\u503C\u6807\u6CE8\uFF0C\u5DE6\u2192\u53F3\u63ED\u793A\u6216\u88AB\u9010\u67F1\u957F\u51FA",
+      note: '\u6570\u636E\u7528\u5B57\u7B26\u4E32\uFF1Avalues="1.2,3.4"\uFF08\u9017\u53F7/\u7A7A\u767D\u5206\u9694\uFF09\u3001labels="\u4E00|\u4E8C|\u4E09"\uFF08\u7AD6\u7EBF\u5206\u9694\uFF09\uFF1Bmark \u6307\u5B9A\u5F3A\u8C03\u7D22\u5F15\uFF08-1 \u5173\u95ED\uFF09',
+      props: [
+        P2("kind", "string", "bars", "\u56FE\u5F62\uFF1Abars / area / line / steps"),
+        P2("values", "string", "", "\u6570\u636E\u5E8F\u5217\uFF08\u9017\u53F7\u6216\u7A7A\u767D\u5206\u9694\u7684\u6570\u5B57\uFF09"),
+        P2("labels", "string", "", "\u6A2A\u8F74\u6807\u7B7E\uFF08\u7AD6\u7EBF\u5206\u9694\uFF1B\u6570\u91CF\u4E0E\u6570\u636E\u70B9\u4E00\u81F4\u6216\u6309\u6BD4\u4F8B\u644A\u653E\uFF09"),
+        P2("bins", "number", 0, "bars \u5206\u7BB1\u6570\uFF1A0=\u9010\u503C\u6210\u67F1\uFF0C>0=\u6309\u5747\u503C\u5F52\u5E76\u6210 N \u7BB1"),
+        P2("max", "number", 0, "\u7EB5\u8F74\u4E0A\u9650\uFF1A0=\u6309\u6570\u636E\u81EA\u52A8"),
+        P2("min", "number", 0, "\u7EB5\u8F74\u4E0B\u9650"),
+        P2("grid", "number", 4, "\u6A2A\u5411\u7F51\u683C\u7EBF\u6570\u91CF\uFF080=\u4E0D\u753B\uFF09"),
+        P2("axis", "number", 1, "\u662F\u5426\u753B\u57FA\u7EBF\uFF081/0\uFF09"),
+        P2("gap", "number", 0.34, "bars \u67F1\u95F4\u8DDD\u6BD4\u4F8B 0\u20130.8"),
+        P2("reveal", "number", 1.2, "\u63ED\u793A\u52A8\u753B\u65F6\u957F\uFF08\u79D2\uFF09"),
+        P2("mark", "number", -1, "\u5F3A\u8C03\u7D22\u5F15\uFF08-1=\u65E0\uFF09"),
+        P2("mark_label", "string", "", "\u5F3A\u8C03\u70B9\u4E0A\u65B9\u6807\u6CE8\u6587\u672C"),
+        P2("show_values", "number", 0, "\u67F1\u9876\u662F\u5426\u663E\u793A\u6570\u503C\uFF081/0\uFF0C\u4EC5 bars\uFF09"),
+        P2("digits", "number", 1, "\u6570\u503C\u5C0F\u6570\u4F4D"),
+        P2("suffix", "string", "", "\u6570\u503C\u540E\u7F00\uFF08\u5982 %\uFF09"),
+        P2("dots", "number", 0, "\u6298\u70B9\u662F\u5426\u753B\u5706\u70B9\uFF081/0\uFF0Carea/line\uFF09"),
+        P2("smooth", "number", 0, "\u6298\u7EBF\u662F\u5426\u505A\u5E73\u6ED1\uFF081/0\uFF0Carea/line\uFF09")
+      ]
+    },
     // ---- bd 族（16）
     bdBG: {
       desc: "\u80CC\u666F\u7F51\u683C\uFF1A\u7EC6\u7F51\u683C\u4E0A\u4E00\u6761\u626B\u63CF\u5E26\u5468\u671F\u6027\u626B\u8FC7\uFF0C\u5E26\u5185\u683C\u5B50\u77ED\u6682\u53D8\u4EAE\uFF08\u5927\u9762\u79EF\u6D3B\u80CC\u666F\uFF0C\u9632\u9759\u6001\uFF09",
@@ -2552,8 +2855,21 @@
   if (!canvas) throw new Error('\u5BBF\u4E3B\u9875\u7F3A\u5C11 <canvas id="kine">');
   var rt = createRuntime(canvas);
   var api = {
-    load(ir) {
-      rt.load(ir);
+    async load(ir, assets) {
+      const list = Array.isArray(assets) ? assets : assets?.images;
+      const images = /* @__PURE__ */ new Map();
+      if (list?.length) {
+        for (const a of list) {
+          try {
+            const img = new Image();
+            img.src = a.dataUrl;
+            await img.decode();
+            images.set(a.src, img);
+          } catch {
+          }
+        }
+      }
+      rt.load(ir, { assets: { images } });
     },
     jump(T) {
       rt.jump(T);

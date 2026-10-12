@@ -80,7 +80,7 @@ export async function toolCheck(ctx: AgentContext, opts: CheckOptions = {}): Pro
   const pass = hardFails.length === 0;
 
   const facts: string[] = [
-    `断言 ${report.results.length} 条：PASS ${report.passCount} / FAIL ${report.failCount} / SKIP ${report.skipCount}`,
+    `断言 ${report.results.length} 条：PASS ${report.passCount} / FAIL(blocking) ${report.failCount - report.warnFailCount} / FAIL(warn) ${report.warnFailCount} / SKIP ${report.skipCount}${report.failCount - report.warnFailCount === 0 && report.warnFailCount > 0 ? '（顶层 PASS，但含 warn 级未达项——交付说明需提及）' : ''}`,
   ];
   for (const r of [...hardFails, ...warnFails].slice(0, 8)) {
     facts.push(`${r.verdict === 'FAIL' ? '✗' : '!'} ${r.id}（${r.metric}）期望 ${r.expect}，实测 ${r.display}${r.severity === 'warn' ? '（warn）' : ''}`);

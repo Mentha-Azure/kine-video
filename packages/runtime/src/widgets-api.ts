@@ -47,6 +47,10 @@ export interface WidgetDef {
 const registry = new Map<string, WidgetDef>();
 
 export function registerWidget(def: WidgetDef): void {
+  // v5：重名劫持防护——后注册覆盖先注册必须可见（第三方 pack 误用通用名会盖掉官方 widget）
+  if (registry.has(def.name)) {
+    console.warn(`[kine] registerWidget 重名：${def.name} 已存在，本次注册将覆盖（建议命名空间前缀）`);
+  }
   registry.set(def.name, def);
 }
 

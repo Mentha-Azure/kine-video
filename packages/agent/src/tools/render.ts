@@ -1,5 +1,5 @@
 // kine.render —— 全片/区间渲染 + 版本管理（最新版永远占「终版」指针）
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { statSync } from 'node:fs';
 import { pointAtFrame } from '@kine/dsl';
 import { listVersions, nextVersion, readLatest, setLatest } from '@kine/store';
@@ -18,6 +18,8 @@ export interface RenderOptions {
   audio?: boolean;
   /** 编码档位 preset 覆盖（ultrafast…veryslow；缓存按档位隔离） */
   preset?: string;
+  /** v5：渲染工作目录覆盖（等价 KINE_WORK_DIR；相对路径按 KINE_CWD/cwd 解析） */
+  workDir?: string;
 }
 
 const PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'] as const;
@@ -54,6 +56,10 @@ export async function toolRender(ctx: AgentContext, opts: RenderOptions = {}): P
     }
   }
   let presetNote = '';
+  if (opts.workDir) {
+    defaults.workDir = isAbsolute(opts.workDir) ? opts.workDir : resolve(process.env.KINE_CWD ?? process.cwd(), opts.workDir);
+    presetNote = `工作目录：${defaults.workDir}（--work-dir）`;
+  }
   if (opts.preset !== undefined) {
     if (!(PRESETS as readonly string[]).includes(opts.preset)) {
       return fail('render', 'E-RENDER-006', `未知编码档位 preset "${opts.preset}"`, {

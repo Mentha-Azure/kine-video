@@ -12,8 +12,26 @@ if (!canvas) throw new Error('宿主页缺少 <canvas id="kine">');
 const rt = createRuntime(canvas);
 
 const api = {
-  load(ir: unknown): void {
-    rt.load(ir as never);
+  async load(
+    ir: unknown,
+    assets?: Array<{ src: string; dataUrl: string }> | { images?: Array<{ src: string; dataUrl: string }> } | null,
+  ): Promise<void> {
+    // v5：预解码 image 资产（dataURL → Image），注入 runtime；解码失败按 missing-asset 处理（贴屏横幅）
+    const list = Array.isArray(assets) ? assets : assets?.images;
+    const images = new Map<string, TexImageSource>();
+    if (list?.length) {
+      for (const a of list) {
+        try {
+          const img = new Image();
+          img.src = a.dataUrl;
+          await img.decode();
+          images.set(a.src, img);
+        } catch {
+          /* 解码失败 → 运行时 missing 横幅 */
+        }
+      }
+    }
+    rt.load(ir as never, { assets: { images } });
   },
   jump(T: number): void {
     rt.jump(T);

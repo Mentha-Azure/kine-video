@@ -25,16 +25,16 @@ def _grid_ratios(mask: np.ndarray, cols: int = 5, rows: int = 5) -> list:
     return out
 
 
-def density(path: str, lit: float = 40.0) -> dict:
-    """内容密度：灰度 >40 像素占比（≥0.9% 与 03 规范一致；此处返回原始比例 0-1）。"""
+def density(path: str, lit: float = 40.0, invert: bool = False) -> dict:
+    """内容密度：dark=灰度>40 像素占比；light(invert)=灰度<215 像素占比（浅底深画，v5）。"""
     x = load_rgb(path)
     g = gray(x)
-    mask = g > lit
+    mask = g < (255.0 - lit) if invert else g > lit
     ratio = float(mask.mean())
-    # 背景黑电平（最暗 30% 像素）
+    # 背景电平（dark：最暗 30% 像素；light：最亮 30%）
     flat = g.reshape(-1)
     k = max(1, int(flat.size * 0.30))
-    idx = np.argpartition(flat, k)[:k]
+    idx = np.argpartition(flat, -k)[-k:] if invert else np.argpartition(flat, k)[:k]
     px = x.reshape(-1, 3)[idx]
     bg = [round(float(px[:, i].mean()), 2) for i in range(3)]
     # 5x5 网格热点 top3
@@ -54,13 +54,13 @@ def frame_diff(path_a: str, path_b: str, eps: float = 8.0) -> dict:
     return {'value': round(ratio, 6), 'grid': _grid_ratios(mask.astype(np.float32))}
 
 
-def edge_band(path: str, band: int = 34, lit: float = 40.0) -> dict:
-    """最外 band px 环带内容占比（≤0.6 由断言层判定，检测贴边 HUD 被切）。"""
+def edge_band(path: str, band: int = 34, lit: float = 40.0, invert: bool = False) -> dict:
+    """最外 band px 环带内容占比（≤0.6 由断言层判定，检测贴边 HUD 被切）；light(invert) 以暗像素为内容。"""
     x = load_rgb(path)
     g = gray(x)
     h, w = g.shape
     b = min(band, h // 3, w // 3)
-    mask = g > lit
+    mask = g < (255.0 - lit) if invert else g > lit
     top = mask[:b, :]
     bot = mask[-b:, :]
     left = mask[:, :b]
@@ -80,13 +80,13 @@ def edge_band(path: str, band: int = 34, lit: float = 40.0) -> dict:
     }
 
 
-def black_level(path: str) -> dict:
-    """背景黑电平：最暗 30% 像素 RGB 均值（6-9 为健康区；>9 发灰、<6 死黑）。"""
+def black_level(path: str, pick: str = 'dark') -> dict:
+    """背景电平：dark=最暗 30% RGB 均值（黑电平 6-9 健康）；light=最亮 30%（白电平，浅色模式期望 ~235-252）。"""
     x = load_rgb(path)
     g = gray(x)
     flat = g.reshape(-1)
     k = max(1, int(flat.size * 0.30))
-    idx = np.argpartition(flat, k)[:k]
+    idx = np.argpartition(flat, -k)[-k:] if pick == 'light' else np.argpartition(flat, k)[:k]
     px = x.reshape(-1, 3)[idx]
     rgb = [round(float(px[:, i].mean()), 3) for i in range(3)]
     return {'value': round(float(np.mean(rgb)), 3), 'rgb': rgb, 'maxChannel': round(max(rgb), 3)}

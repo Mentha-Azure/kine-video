@@ -167,7 +167,9 @@ export function startChunkEncoder(p: EncoderProfile, outFile: string): ChunkEnco
     if (stderr.length > 16_384) stderr = stderr.slice(-8192);
   });
   let failed: Error | null = null;
-  child.on('error', (e) => (failed = e));
+  child.on('error', (e) => (failed = failed ?? e));
+  // v5：磁盘写满/管道破裂时 stdin 会 emit EPIPE——必须吞掉为 failed，避免宿主（MCP）进程未处理异常整体崩溃
+  stdin.on('error', (e) => (failed = failed ?? (e as Error)));
 
   const writeFrame = (buf: Buffer) =>
     new Promise<void>((resolve, reject) => {

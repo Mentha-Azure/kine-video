@@ -19,6 +19,8 @@ export interface PaletteSpec {
   accent_secondary: { color: string; max_frames: number; use: string };
   post?: PalettePostSpec;
   font?: string;
+  /** v5：浅底色板（注册期按浅底规则校验；应用后 theme.mode → light） */
+  mode?: 'light';
 }
 
 export const CORE_PALETTE: PaletteSpec = {
@@ -51,17 +53,41 @@ export function resolvePalette(ref: string | undefined, home?: string): PaletteR
       error: { code: 'E-LIB-003', message: `条目 ${res.entry.id} 不是有效色板（data 需含 bg[2]/text/accent）` },
     };
   }
-  // v3 P0-3：注册期就把关背景亮度（否则可绕过 lint 的 bg≤32 检查造成发灰）
+  // v3 P0-3 / v5：注册期把关背景——dark：通道 ≤32 防发灰；light：通道 ≥180 且文字对比度 ≥4.5:1
+  const isLight = (data as { mode?: unknown }).mode === 'light';
+  const rgbOf = (c: string): [number, number, number] | null => {
+    const mm = /^#?([0-9a-fA-F]{6})$/.exec(c.trim());
+    if (!mm) return null;
+    const v = parseInt(mm[1]!, 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  };
+  const lumOf = ([r, g, b]: [number, number, number]): number => {
+    const f = (x: number) => {
+      const y = x / 255;
+      return y <= 0.03928 ? y / 12.92 : Math.pow((y + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
   for (const c of data.bg as unknown[]) {
-    const mm = /^#?([0-9a-fA-F]{6})$/.exec(String(c).trim());
-    if (!mm) {
+    const rgb = rgbOf(String(c));
+    if (!rgb) {
       return {
         ok: false,
         error: { code: 'E-LIB-003', message: `色板 ${res.entry.id} 的 bg 颜色非法：${String(c)}（需 #rrggbb）` },
       };
     }
-    const v = parseInt(mm[1]!, 16);
-    if (Math.max((v >> 16) & 255, (v >> 8) & 255, v & 255) > 32) {
+    if (isLight) {
+      if (Math.min(rgb[0], rgb[1], rgb[2]) < 180) {
+        return {
+          ok: false,
+          error: {
+            code: 'E-COLOR-002',
+            message: `浅色色板 ${res.entry.id} 的背景 ${String(c)} 过暗（mode: light 要求通道 ≥180）`,
+            candidates: ['深底色板请勿声明 mode: light'],
+          },
+        };
+      }
+    } else if (Math.max(rgb[0], rgb[1], rgb[2]) > 32) {
       return {
         ok: false,
         error: {
@@ -70,6 +96,25 @@ export function resolvePalette(ref: string | undefined, home?: string): PaletteR
           candidates: ['目标黑电平 6–9 由 black_level 指标在成片帧上把关'],
         },
       };
+    }
+  }
+  if (isLight) {
+    const tb = rgbOf(String(data.text));
+    const bb = rgbOf(String((data.bg as string[])[0]));
+    if (tb && bb) {
+      const L1 = lumOf(tb);
+      const L2 = lumOf(bb);
+      const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+      if (ratio < 4.5) {
+        return {
+          ok: false,
+          error: {
+            code: 'E-COLOR-005',
+            message: `浅色色板 ${res.entry.id} 文字对比度不足（${ratio.toFixed(2)}:1 < 4.5:1）`,
+            candidates: ['调深 text 或调浅 bg 提升对比度'],
+          },
+        };
+      }
     }
   }
   return {
@@ -84,6 +129,7 @@ export function resolvePalette(ref: string | undefined, home?: string): PaletteR
       accent_secondary: { ...CORE_PALETTE.accent_secondary, ...(data.accent_secondary ?? {}) },
       post: data.post,
       font: data.font,
+      mode: isLight ? 'light' : undefined,
     },
   };
 }
@@ -109,6 +155,7 @@ export function applyPalette(theme: ThemeSpecT, palette: PaletteSpec | null): Th
     text_dim: palette.text_dim,
     accent: palette.accent,
     accent_secondary: { ...palette.accent_secondary },
+    mode: palette.mode === 'light' ? 'light' : theme.mode,
     font: palette.font ? { ...theme.font, family: palette.font } : theme.font,
     post: {
       vignette: {
@@ -135,11 +182,12 @@ export function applyPalette(theme: ThemeSpecT, palette: PaletteSpec | null): Th
   return eff;
 }
 
-/** 哈希投影：core 且无 palette → 省略 profile/palette（旧工程哈希逐字节不变）。 */
+/** 哈希投影：core 且无 palette → 省略 profile/palette；mode=dark（默认）也省略（旧工程哈希逐字节不变）。 */
 export function canonicalTheme(theme: ThemeSpecT): Record<string, unknown> {
-  const { profile, palette, ...rest } = theme;
+  const { profile, palette, mode, ...rest } = theme;
   const out: Record<string, unknown> = { ...rest };
   if (profile !== 'core') out.profile = profile;
   if (palette !== undefined) out.palette = palette;
+  if (mode === 'light') out.mode = mode;
   return out;
 }

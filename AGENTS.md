@@ -42,6 +42,9 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 时间定位 | `kine map --t 12.5` / `kine map --frame 750` |
 | 画面排查 | `kine probe --at 12.5 --hash` |
 | 布局体检 | `kine layout`（重叠/出画/贴边）；`kine contact --scene code --count 8`（接触表拼图） |
+| 浅色主题 | `theme.mode: light`（浅底深字；E-COLOR-005 对比度 ≥4.5:1；指标走白电平/暗像素口径） |
+| 字幕 | `kind: subtitles`（cues 或 `.srt`）；`kine render` 自动导出 `<version>.srt` |
+| 渲染目录 | `kine render --work-dir D:\kine-work`（或 `KINE_WORK_DIR`；磁盘 <1GB 报 E-RENDER-007） |
 | 元素定位 | `kine find "标题" [--scene code]` |
 | 旋钮解释 | `kine explain scenes[code].camera.tw` |
 | 影响分析 | `kine impact audio.music.file` |
