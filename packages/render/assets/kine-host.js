@@ -409,6 +409,9 @@
   };
   var N_BLINDS = 14;
   var N_VBARS = 12;
+  function companionOffset(off) {
+    return (off >= 0 ? 1 : -1) - off;
+  }
   function drawTransition(ctx, oldC, newC, tr, theme, W, H) {
     const d = Math.max(0, Math.min(1, tr.d));
     const dir = tr.variant % 2;
@@ -540,25 +543,25 @@
       case "push_in": {
         const off = (dir === 0 ? 1 : -1) * e;
         ctx.drawImage(oldC, -off * W, 0, W, H);
-        ctx.drawImage(newC, (1 - off) * W, 0, W, H);
+        ctx.drawImage(newC, companionOffset(off) * W, 0, W, H);
         return;
       }
       case "push_out": {
         const off = (dir === 0 ? -1 : 1) * e;
         ctx.drawImage(oldC, -off * W, 0, W, H);
-        ctx.drawImage(newC, (1 - off) * W, 0, W, H);
+        ctx.drawImage(newC, companionOffset(off) * W, 0, W, H);
         return;
       }
       case "push_up": {
         const off = (dir === 0 ? 1 : -1) * e;
         ctx.drawImage(oldC, 0, -off * H, W, H);
-        ctx.drawImage(newC, 0, (1 - off) * H, W, H);
+        ctx.drawImage(newC, 0, companionOffset(off) * H, W, H);
         return;
       }
       case "push_down": {
         const off = (dir === 0 ? -1 : 1) * e;
         ctx.drawImage(oldC, 0, -off * H, W, H);
-        ctx.drawImage(newC, 0, (1 - off) * H, W, H);
+        ctx.drawImage(newC, 0, companionOffset(off) * H, W, H);
         return;
       }
       // ---------------------------------------------------------- C 缩放（收回/展开）
@@ -576,10 +579,10 @@
         const off = (dir === 0 ? 1 : -1) * f;
         ctx.drawImage(oldC, -off * W, 0, W, H);
         ctx.globalAlpha = 0.18 * (1 - f);
-        ctx.drawImage(newC, (1 - off) * W - off * W * 0.06, 0, W, H);
-        ctx.drawImage(newC, (1 - off) * W - off * W * 0.12, 0, W, H);
+        ctx.drawImage(newC, companionOffset(off) * W - off * W * 0.06, 0, W, H);
+        ctx.drawImage(newC, companionOffset(off) * W - off * W * 0.12, 0, W, H);
         ctx.globalAlpha = 1;
-        ctx.drawImage(newC, (1 - off) * W, 0, W, H);
+        ctx.drawImage(newC, companionOffset(off) * W, 0, W, H);
         return;
       }
       case "whip_v": {
@@ -587,10 +590,10 @@
         const off = (dir === 0 ? 1 : -1) * f;
         ctx.drawImage(oldC, 0, -off * H, W, H);
         ctx.globalAlpha = 0.18 * (1 - f);
-        ctx.drawImage(newC, 0, (1 - off) * H - off * H * 0.06, W, H);
-        ctx.drawImage(newC, 0, (1 - off) * H - off * H * 0.12, W, H);
+        ctx.drawImage(newC, 0, companionOffset(off) * H - off * H * 0.06, W, H);
+        ctx.drawImage(newC, 0, companionOffset(off) * H - off * H * 0.12, W, H);
         ctx.globalAlpha = 1;
-        ctx.drawImage(newC, 0, (1 - off) * H, W, H);
+        ctx.drawImage(newC, 0, companionOffset(off) * H, W, H);
         return;
       }
       default: {

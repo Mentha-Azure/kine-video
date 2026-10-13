@@ -20,6 +20,7 @@ import {
   type LibraryKind,
 } from '@kine/store';
 import type { AgentContext } from '../context';
+import { validatePaletteData } from '@kine/dsl';
 import { fail, ok, type NextAction, type ToolResult } from '../types';
 
 export interface LibraryArgs {
@@ -251,12 +252,9 @@ export async function toolLibrary(ctx: AgentContext, args: LibraryArgs): Promise
           if (!data || typeof data !== 'object') throw new Error('YAML 内容为空');
           const bg = data.bg;
           if (!Array.isArray(bg) || bg.length !== 2) throw new Error('bg 需为两个颜色');
-          for (const c of bg) {
-            const mm = /^#?([0-9a-fA-F]{6})$/.exec(String(c).trim());
-            if (!mm) throw new Error(`bg 颜色非法：${String(c)}（需 #rrggbb）`);
-            const v = parseInt(mm[1]!, 16);
-            if (Math.max((v >> 16) & 255, (v >> 8) & 255, v & 255) > 32) throw new Error(`bg 过亮（通道应 ≤32）：${String(c)}`);
-          }
+          // v6：dark/light 分流校验与 dsl/palette.ts 对齐（浅色种子可注册）
+          const pIssues = validatePaletteData({ bg, text: data.text, mode: data.mode });
+          if (pIssues.length > 0) throw new Error(`${pIssues[0]!.message}（${pIssues[0]!.code}）`);
           for (const k of ['text', 'text_dim', 'accent']) {
             if (!/^#?[0-9a-fA-F]{6}$/.test(String(data[k] ?? '').trim())) throw new Error(`${k} 颜色非法：${String(data[k])}`);
           }

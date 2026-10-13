@@ -1,0 +1,10 @@
+# Kine 种子色板 — 浅纸 light-paper（浅色主题示例：mode: light）
+# 注册：kine library seed → 引用：theme.palette: library://core/light-paper
+name: light-paper
+tags: [light, paper]
+mode: light
+bg: ['#f4f5f7', '#e8eaef']
+text: '#1a1d24'
+text_dim: '#5a6070'
+accent: '#d92b45'
+accent_secondary: { color: '#4a6cf7', max_frames: 2, use: glitch }

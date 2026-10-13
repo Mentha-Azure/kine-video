@@ -6,7 +6,7 @@ export { registerWidget, getWidget, listWidgets, P, num, str, type WidgetDef, ty
 export { drawParticles, type ParticleCtx } from './particles';
 export { drawTextLayer, interpolateText, type TextDrawResult, type TextInterpEnv } from './text';
 export { drawFx, type FxArgs } from './effects';
-export { drawTransition, type TransitionView } from './transitions';
+export { drawTransition, companionOffset, type TransitionView } from './transitions';
 export { drawPost } from './post';
 export type { ProbeElement, ProbeResult, FrameAssets, KineIR, CompiledScene, CompiledShot } from './types';
 // 时间/随机/相机单一真源（来自 @kine/dsl）

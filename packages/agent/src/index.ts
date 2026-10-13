@@ -18,7 +18,7 @@ export { toolChangelog, toolRollback, toolBaseline, toolDiff, toolVersions } fro
 export { toolCache } from './tools/cache';
 export { toolLibrary } from './tools/library';
 export { toolMusic } from './tools/music';
-export { toolForge } from './tools/forge';
+export { toolForge, validateForgeData } from './tools/forge';
 export { toolStyle } from './tools/style';
 export { toolWidgets } from './tools/widgets';
 export { toolRules, RULES } from './tools/rules';

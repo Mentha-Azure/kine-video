@@ -16,7 +16,7 @@ import {
 } from '@kine/store';
 import { getKinePy } from '@kine/store';
 import { capturePngs, ensureDir, renderDefaults } from '@kine/render';
-import { SYNTH_PARAM_KEYS, SFX_NAMES, TRANSITION_NAMES, loadAndCompile } from '@kine/dsl';
+import { SYNTH_PARAM_KEYS, SFX_NAMES, TRANSITION_NAMES, loadAndCompile, validatePaletteData } from '@kine/dsl';
 import { WIDGET_NAMES } from '@kine/widgets';
 import type { AgentContext } from '../context';
 import { fail, ok, type ToolResult } from '../types';
@@ -84,7 +84,7 @@ function skeleton(kind: ForgeKind, name: string): Record<string, unknown> {
 }
 
 /** 静态校验：返回 { errors, warnings } */
-function validateForgeData(kind: ForgeKind, data: unknown): { errors: string[]; warnings: string[] } {
+export function validateForgeData(kind: ForgeKind, data: unknown): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!isObj(data)) return { errors: ['数据必须是对象（YAML 映射）'], warnings: [] };
@@ -97,14 +97,17 @@ function validateForgeData(kind: ForgeKind, data: unknown): { errors: string[]; 
       errors.push('bg 必须是两个 #rrggbb 组成的数组');
       return;
     }
-    for (const c of v) {
-      const rgb = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
-      if (Math.max(...rgb) > 32) errors.push(`bg 通道值应 ≤32（防发灰），实际 ${c}`);
+    // v6：dark/light 分流校验与 dsl/palette.ts 的 validatePaletteData 共用（此前只看 max>32，浅色色板注册不了）
+    for (const issue of validatePaletteData({ bg: v, text: data.text, mode: data.mode })) {
+      errors.push(`${issue.message}（${issue.code}）`);
     }
   };
 
   if (kind === 'palette' || kind === 'theme') {
     checkBg(data.bg);
+    if (data.mode !== undefined && data.mode !== 'light' && data.mode !== 'dark') {
+      errors.push("mode 仅支持 'light' 或 'dark'");
+    }
     if (kind === 'theme') {
       // theme 只约束显式给出的字段；缺省部分由规格默认值补齐
       if (data.text !== undefined) checkHex(data.text, 'text');

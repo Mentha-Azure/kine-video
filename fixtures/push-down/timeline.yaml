@@ -1,0 +1,47 @@
+# push-down 回归 fixture（v6）：push_down / push_out 在 dir=0（off<0）时旧公式会把新画布推到 2 屏外，
+# 转场后半段整帧空白（实测 density 0.00%）。修复后：转场中段/后段密度应显著 > 0。
+schema: kine/1
+project: { id: push-down-check, title: Push Down Check, version: v0.1, seed: 7 }
+output:
+  width: 1280
+  height: 720
+  fps: 30
+  duration: 3.0
+  video: { codec: libx264, crf: 15, preset: slow }
+  audio: { codec: aac, bitrate: 192k, limit_dbfs: -1 }
+pace:
+  segments:
+    - { id: full, until: 3.0, ratio: 1.0 }
+theme:
+  bg: ['#060609', '#0a0a12']
+  text: '#e8e8ea'
+  text_dim: '#9a9aa2'
+  accent: '#ff2e3f'
+render: { surface: canvas, workers: 4 }
+scenes:
+  - id: s1
+    name: push-check
+    dur: 3.0
+    camera: { z1: 1.0, dx: 0, dy: 0, roll: 0, tw: 0.2, bpm: 90 }
+    layers:
+      - kind: particles
+        id: p
+        count: 70
+        size: [1.4, 3.0]
+        depth: near
+        parallax: 0.085
+      - kind: widget
+        id: term
+        widget: bdTerminal
+        props: { size: 26, title: 'PUSH // CHECK', lines: 12, speed: 1.2 }
+        place: { x: 200, y: 160 }
+      - kind: widget
+        id: scan
+        widget: bdScan
+        props: { period: 1.6 }
+        place: { x: 640, y: 560, w: 900, h: 180, anchor: center }
+    shots:
+      - { dur: 1.4 }
+      - { dur: 1.6, transition: { kind: 10, variant: 0 } }
+    asserts: []
+asserts: []

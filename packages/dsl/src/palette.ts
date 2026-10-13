@@ -35,6 +35,73 @@ export type PaletteResolution =
   | { ok: true; palette: PaletteSpec; source: 'core' | 'library'; entryId?: string }
   | { ok: false; error: { code: string; message: string; candidates?: string[] } };
 
+/** 色板数据注册期校验（v6）：dark → bg 通道 ≤32（防发灰）；light → 通道 ≥180 且 text 对比度 ≥4.5:1。
+ *  resolvePalette / forge register / library seed 三处共用，防规则漂移（v5 时代 forge 漏了 light 分支，浅色色板注册不了）。 */
+export interface PaletteIssue {
+  code: 'E-LIB-003' | 'E-COLOR-002' | 'E-COLOR-005';
+  message: string;
+  candidates?: string[];
+}
+
+export function validatePaletteData(data: { bg?: unknown; text?: unknown; mode?: unknown }): PaletteIssue[] {
+  const issues: PaletteIssue[] = [];
+  const isLight = data.mode === 'light';
+  const rgbOf = (c: string): [number, number, number] | null => {
+    const mm = /^#?([0-9a-fA-F]{6})$/.exec(c.trim());
+    if (!mm) return null;
+    const v = parseInt(mm[1]!, 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  };
+  const lumOf = ([r, g, b]: [number, number, number]): number => {
+    const f = (x: number) => {
+      const y = x / 255;
+      return y <= 0.03928 ? y / 12.92 : Math.pow((y + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const bg = Array.isArray(data.bg) ? data.bg : [];
+  for (const c of bg) {
+    const s = String(c);
+    const rgb = rgbOf(s);
+    if (!rgb) {
+      issues.push({ code: 'E-LIB-003', message: `背景颜色非法：${s}（需 #rrggbb）` });
+      continue;
+    }
+    if (isLight) {
+      if (Math.min(rgb[0], rgb[1], rgb[2]) < 180) {
+        issues.push({
+          code: 'E-COLOR-002',
+          message: `背景 ${s} 过暗（mode: light 要求通道 ≥180）`,
+          candidates: ['深底色板请勿声明 mode: light'],
+        });
+      }
+    } else if (Math.max(rgb[0], rgb[1], rgb[2]) > 32) {
+      issues.push({
+        code: 'E-COLOR-002',
+        message: `背景 ${s} 过亮（通道应 ≤32，防发灰/白纱）`,
+        candidates: ['目标黑电平 6–9 由 black_level 指标在成片帧上把关'],
+      });
+    }
+  }
+  if (isLight) {
+    const tb = typeof data.text === 'string' ? rgbOf(data.text) : null;
+    const bb = bg.length > 0 ? rgbOf(String(bg[0])) : null;
+    if (tb && bb) {
+      const L1 = lumOf(tb);
+      const L2 = lumOf(bb);
+      const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+      if (ratio < 4.5) {
+        issues.push({
+          code: 'E-COLOR-005',
+          message: `文字对比度不足（${ratio.toFixed(2)}:1 < 4.5:1）`,
+          candidates: ['调深 text 或调浅 bg 提升对比度'],
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 export function resolvePalette(ref: string | undefined, home?: string): PaletteResolution {
   if (!ref || ref === 'core') return { ok: true, palette: CORE_PALETTE, source: 'core' };
   const res = resolveLibraryRefLite(ref, home);
@@ -53,69 +120,12 @@ export function resolvePalette(ref: string | undefined, home?: string): PaletteR
       error: { code: 'E-LIB-003', message: `条目 ${res.entry.id} 不是有效色板（data 需含 bg[2]/text/accent）` },
     };
   }
-  // v3 P0-3 / v5：注册期把关背景——dark：通道 ≤32 防发灰；light：通道 ≥180 且文字对比度 ≥4.5:1
+  // v3 P0-3 / v5 / v6：注册期把关——dark/light 分流 + 浅底对比度；与 forge / library seed 共用 validatePaletteData（防三处规则漂移）
   const isLight = (data as { mode?: unknown }).mode === 'light';
-  const rgbOf = (c: string): [number, number, number] | null => {
-    const mm = /^#?([0-9a-fA-F]{6})$/.exec(c.trim());
-    if (!mm) return null;
-    const v = parseInt(mm[1]!, 16);
-    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-  };
-  const lumOf = ([r, g, b]: [number, number, number]): number => {
-    const f = (x: number) => {
-      const y = x / 255;
-      return y <= 0.03928 ? y / 12.92 : Math.pow((y + 0.055) / 1.055, 2.4);
-    };
-    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-  };
-  for (const c of data.bg as unknown[]) {
-    const rgb = rgbOf(String(c));
-    if (!rgb) {
-      return {
-        ok: false,
-        error: { code: 'E-LIB-003', message: `色板 ${res.entry.id} 的 bg 颜色非法：${String(c)}（需 #rrggbb）` },
-      };
-    }
-    if (isLight) {
-      if (Math.min(rgb[0], rgb[1], rgb[2]) < 180) {
-        return {
-          ok: false,
-          error: {
-            code: 'E-COLOR-002',
-            message: `浅色色板 ${res.entry.id} 的背景 ${String(c)} 过暗（mode: light 要求通道 ≥180）`,
-            candidates: ['深底色板请勿声明 mode: light'],
-          },
-        };
-      }
-    } else if (Math.max(rgb[0], rgb[1], rgb[2]) > 32) {
-      return {
-        ok: false,
-        error: {
-          code: 'E-COLOR-002',
-          message: `色板 ${res.entry.id} 的背景 ${String(c)} 过亮（通道应 ≤32，防发灰/白纱；v3 P0-3 注册期把关）`,
-          candidates: ['目标黑电平 6–9 由 black_level 指标在成片帧上把关'],
-        },
-      };
-    }
-  }
-  if (isLight) {
-    const tb = rgbOf(String(data.text));
-    const bb = rgbOf(String((data.bg as string[])[0]));
-    if (tb && bb) {
-      const L1 = lumOf(tb);
-      const L2 = lumOf(bb);
-      const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
-      if (ratio < 4.5) {
-        return {
-          ok: false,
-          error: {
-            code: 'E-COLOR-005',
-            message: `浅色色板 ${res.entry.id} 文字对比度不足（${ratio.toFixed(2)}:1 < 4.5:1）`,
-            candidates: ['调深 text 或调浅 bg 提升对比度'],
-          },
-        };
-      }
-    }
+  const vIssues = validatePaletteData(data as { bg?: unknown; text?: unknown; mode?: unknown });
+  if (vIssues.length > 0) {
+    const i0 = vIssues[0]!;
+    return { ok: false, error: { code: i0.code, message: `色板 ${res.entry.id}：${i0.message}`, candidates: i0.candidates } };
   }
   return {
     ok: true,

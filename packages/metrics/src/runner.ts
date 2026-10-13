@@ -136,15 +136,28 @@ async function runDensity(ir: KineIR, scope: MetricScope | null, inputs: MetricI
   const { frames } = sampleFrames(ir, scope);
   if (!inputs.frames) throw new Error('density 需要 FrameProvider（inputs.frames）');
   const files = await inputs.frames.ensure(frames);
+  const light = ir.theme.mode === 'light';
+  // v6：浅底模式下，引擎自身的幕首装置（白闪等）会把"暗像素占比"瞬时拉低（假性空帧）——
+  // 与 transition_spike 同源豁免设计内窗口（幕头/镜头转场/硬切/强拍白闪），避免最差帧聚合踩中装置帧。
+  const exempt = new Set<number>();
+  if (light) {
+    const fps = ir.time.map.fps;
+    for (const dsp of designedSpans(ir)) {
+      const f0 = Math.max(0, Math.floor(dsp.span[0] * fps) - 1);
+      const f1 = Math.min(ir.time.map.frames - 1, Math.ceil(dsp.span[1] * fps) + 1);
+      for (let f = f0; f <= f1; f++) exempt.add(f);
+    }
+  }
   const values: { frame: number; value: number; backgroundRgb: [number, number, number]; hotspots: unknown }[] = [];
   for (const f of frames) {
     const p = files.get(f);
     if (!p) throw new Error(`帧 ${f} 的 PNG 未提供`);
-    const light = ir.theme.mode === 'light';
     const d = await pyDensity(p, { invert: light });
     values.push({ frame: f, value: d.value, backgroundRgb: d.backgroundRgb, hotspots: d.hotspots });
   }
-  const sorted = [...values].sort((a, b) => a.value - b.value);
+  const kept = values.filter((x) => !exempt.has(x.frame));
+  const basis = kept.length > 0 ? kept : values;
+  const sorted = [...basis].sort((a, b) => a.value - b.value);
   const worst = sorted[0];
   const vmin = sorted[0].value;
   const vmax = sorted[sorted.length - 1].value;
@@ -152,7 +165,10 @@ async function runDensity(ir: KineIR, scope: MetricScope | null, inputs: MetricI
     `density 最差 ${fmtPct(vmin)} @f${worst.frame}`,
     `采样 ${values.length} 帧（${frames.join(', ')}）`,
     `最差帧背景 RGB(${worst.backgroundRgb.map((x) => x.toFixed(1)).join(', ')})`,
-  ];
+    light && values.length - kept.length > 0
+      ? `设计内窗口豁免 ${values.length - kept.length} 帧（幕首装置/转场/强拍白闪——浅底密度低谷假阳性）`
+      : null,
+  ].filter(Boolean) as string[];
   const interp = `密度 ${fmtPct(vmin)}（阈值 ≥0.90%${ir.theme.mode === 'light' ? '；浅色模式以暗像素计内容' : ''}）。${vmin >= 0.009 ? '内容存在感正常。' : '偏空——黑屏/画面过空，检查该帧元素是否被裁掉或 alpha 过低。'} 热点 top：${JSON.stringify(worst.hotspots).slice(0, 120)}`;
   return {
     metric: 'density', scope, value: vmin, unit: 'ratio',
@@ -381,13 +397,18 @@ async function runTransitionSpike(ir: KineIR, scope: MetricScope | null, inputs:
     ignoredTotal > 0
       ? `设计内边界另豁免 ${ignoredTotal} 处（幕头装置 ${ignored['scene-head']}｜镜头转场 ${ignored['shot-transition']}｜硬切 ${ignored['shot-cut']}｜强拍白闪 ${ignored['beat-flash']}）`
       : null,
+    hits > 0
+      ? `命中帧：${hitFrames.slice(0, 16).map((f) => `f${f}`).join('、')}${hitFrames.length > 16 ? ` …共 ${hitFrames.length} 处` : ''}`
+      : null,
   ].filter(Boolean) as string[];
   return {
     metric: 'transition_spike', scope, value: hits, unit: 'count',
     agg: { min: 0, max: hits },
     extras: { windows: windows.length, diffs, hitFrames, ignored, ignoredFrames },
     sample: { frames: framesAll },
-    interpretation: hits === 0 ? '无孤立跳变（健康；设计内边界—幕头/镜头转场/硬切/强拍白闪—不计）。' : '存在孤立跳变：疑似卡顿/闪回——A 遮罩方向 1-p、B/C/D 位移缩放须收回（ov=1+.15*(1-d)）。',
+    interpretation: hits === 0
+      ? '无孤立跳变（健康；设计内边界—幕头/镜头转场/硬切/强拍白闪—不计）。'
+      : `存在孤立跳变：疑似卡顿/闪回——A 遮罩方向 1-p、B/C/D 位移缩放须收回（ov=1+.15*(1-d)）。命中帧：${hitFrames.slice(0, 12).map((f) => `f${f}`).join('、')}${hitFrames.length > 12 ? ` …共 ${hitFrames.length} 处（见 facts）` : ''}`,
     facts,
   };
 }

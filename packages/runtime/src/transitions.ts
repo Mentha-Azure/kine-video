@@ -29,6 +29,15 @@ const easeInOutCubic = (x: number) => {
 const N_BLINDS = 14;
 const N_VBARS = 12;
 
+/** push/whip 族：新画布相对位移因子（旧画布位移因子为 -off）。
+ *  off>0：旧画布向负方向离开、新画布自正侧进入 → 1-off；
+ *  off<0：旧画布向正方向离开、新画布自负侧进入 → -1-off。
+ *  旧公式 (1-off) 在 off<0 时把新画布推到 2 屏之外（push_down/push_out/whip dir=1 后半段整帧空白）——v6 修复。
+ *  不变量：off=0 → ±1（新画布恰在屏外一侧）；|off|=1 → 0（新画布完全入场）。 */
+export function companionOffset(off: number): number {
+  return (off >= 0 ? 1 : -1) - off;
+}
+
 export function drawTransition(
   ctx: CanvasRenderingContext2D,
   oldC: CanvasImageSource,
@@ -172,25 +181,25 @@ export function drawTransition(
     case 'push_in': {
       const off = (dir === 0 ? 1 : -1) * e;
       ctx.drawImage(oldC, -off * W, 0, W, H);
-      ctx.drawImage(newC, (1 - off) * W, 0, W, H);
+      ctx.drawImage(newC, companionOffset(off) * W, 0, W, H);
       return;
     }
     case 'push_out': {
       const off = (dir === 0 ? -1 : 1) * e;
       ctx.drawImage(oldC, -off * W, 0, W, H);
-      ctx.drawImage(newC, (1 - off) * W, 0, W, H);
+      ctx.drawImage(newC, companionOffset(off) * W, 0, W, H);
       return;
     }
     case 'push_up': {
       const off = (dir === 0 ? 1 : -1) * e;
       ctx.drawImage(oldC, 0, -off * H, W, H);
-      ctx.drawImage(newC, 0, (1 - off) * H, W, H);
+      ctx.drawImage(newC, 0, companionOffset(off) * H, W, H);
       return;
     }
     case 'push_down': {
       const off = (dir === 0 ? -1 : 1) * e;
       ctx.drawImage(oldC, 0, -off * H, W, H);
-      ctx.drawImage(newC, 0, (1 - off) * H, W, H);
+      ctx.drawImage(newC, 0, companionOffset(off) * H, W, H);
       return;
     }
 
@@ -210,10 +219,10 @@ export function drawTransition(
       const off = (dir === 0 ? 1 : -1) * f;
       ctx.drawImage(oldC, -off * W, 0, W, H);
       ctx.globalAlpha = 0.18 * (1 - f);
-      ctx.drawImage(newC, (1 - off) * W - off * W * 0.06, 0, W, H);
-      ctx.drawImage(newC, (1 - off) * W - off * W * 0.12, 0, W, H);
+      ctx.drawImage(newC, companionOffset(off) * W - off * W * 0.06, 0, W, H);
+      ctx.drawImage(newC, companionOffset(off) * W - off * W * 0.12, 0, W, H);
       ctx.globalAlpha = 1;
-      ctx.drawImage(newC, (1 - off) * W, 0, W, H);
+      ctx.drawImage(newC, companionOffset(off) * W, 0, W, H);
       return;
     }
     case 'whip_v': {
@@ -221,10 +230,10 @@ export function drawTransition(
       const off = (dir === 0 ? 1 : -1) * f;
       ctx.drawImage(oldC, 0, -off * H, W, H);
       ctx.globalAlpha = 0.18 * (1 - f);
-      ctx.drawImage(newC, 0, (1 - off) * H - off * H * 0.06, W, H);
-      ctx.drawImage(newC, 0, (1 - off) * H - off * H * 0.12, W, H);
+      ctx.drawImage(newC, 0, companionOffset(off) * H - off * H * 0.06, W, H);
+      ctx.drawImage(newC, 0, companionOffset(off) * H - off * H * 0.12, W, H);
       ctx.globalAlpha = 1;
-      ctx.drawImage(newC, 0, (1 - off) * H, W, H);
+      ctx.drawImage(newC, 0, companionOffset(off) * H, W, H);
       return;
     }
     default: {
