@@ -68,7 +68,7 @@ scenes:
     dur: 5.0
     rate: 1.0
     accel: none
-    camera: { z1: 1.0, tw: 0.35, bpm: 108 }
+    camera: { z1: 1.0, tw: 0.12, bpm: 108 }
     layers:
       - kind: particles
         id: p_far_boot
@@ -101,7 +101,7 @@ scenes:
     name: 标题
     dur: 5.0
     rate: 1.0
-    camera: { z1: 1.02, tw: 0.55, bpm: 108 }
+    camera: { z1: 1.02, tw: 0.12, bpm: 108 }
     layers:
       - kind: particles
         id: p_near_title
@@ -137,7 +137,7 @@ scenes:
     dur: 8.0
     rate: 1.0
     accel: none
-    camera: { z1: 1.03, tw: 0.7, bpm: 108, roll: -0.4 }
+    camera: { z1: 1.03, tw: 0.12, bpm: 108, roll: -0.4 }
     layers:
       - kind: particles
         id: p_far_code
@@ -184,7 +184,7 @@ scenes:
     name: 终幕
     dur: 7.0
     rate: 1.0
-    camera: { z1: 1.0, tw: 0.25, bpm: 108 }
+    camera: { z1: 1.0, tw: 0.12, bpm: 108 }
     layers:
       - kind: particles
         id: p_near_finale

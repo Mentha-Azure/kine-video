@@ -1,0 +1,5 @@
+# kine-py sidecar 依赖（音频合成 / 混音 / 像素指标）
+# 安装：pip install -r requirements.txt
+numpy>=1.24
+scipy>=1.10
+pillow>=9.0

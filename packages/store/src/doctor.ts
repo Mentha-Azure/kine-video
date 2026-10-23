@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compile } from '@kine/dsl';
-import { loadCacheIndex, cacheStatus, saveCacheIndex } from './cache';
-import { atomicWriteFile, dirSize } from './layout';
+import { loadCacheIndex, cacheStatus, saveCacheIndex, workStatus } from './cache';
+import { atomicWriteFile } from './layout';
 import { cleanStaleLocks } from './locks';
 import { kineRepoRoot } from './pyside';
 import type { ProjectStore } from './project';
@@ -133,9 +133,16 @@ export function doctor(store: ProjectStore, opts: { fix?: boolean } = {}): Docto
   });
   if (removed.length) fixedCount += fix ? 1 : 0;
 
-  // 6) work 目录体积报告
-  const workBytes = dirSize(store.layout.workDir);
-  checks.push({ name: 'work', status: 'PASS', detail: `work 目录 ${(workBytes / 1048576).toFixed(1)}MB（kine cache gc 可回收）` });
+  // 6) work 目录体积报告（派生/采样/复用分项 —— cache gc 按档回收）
+  const wk = workStatus(store.layout.workDir);
+  const regen = wk.scratchBytes + wk.sampleBytes;
+  checks.push({
+    name: 'work',
+    status: regen > 1024 * 1024 * 1024 ? 'WARN' : 'PASS',
+    detail:
+      `work ${(wk.totalBytes / 1048576).toFixed(1)}MB：frames ${(wk.scratchBytes / 1048576).toFixed(1)}MB / 采样 ${(wk.sampleBytes / 1048576).toFixed(1)}MB / 复用 ${(wk.cacheBytes / 1048576).toFixed(1)}MB` +
+      (regen > 1024 * 1024 * 1024 ? '｜可回收项超 1GB，建议 kine cache gc' : ''),
+  });
 
   // 7) 宿主 bundle 新鲜度（v5：反馈——改源码后 MCP 常驻旧模块且难确认）
   try {

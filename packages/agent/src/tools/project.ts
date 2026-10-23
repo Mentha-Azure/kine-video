@@ -119,7 +119,7 @@ scenes:
   - id: main
     name: 主幕
     dur: 5.0
-    camera: { z1: 1.0, tw: 0.2, bpm: 108 }
+    camera: { z1: 1.0, tw: 0.12, bpm: 108 }
     layers:
       - kind: widget
         id: bg

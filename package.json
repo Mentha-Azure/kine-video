@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Kine — deterministic AI-native video editing/compositing engine",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "kine": "tsx packages/agent/src/cli.ts",
     "init": "tsx packages/agent/src/cli.ts init",

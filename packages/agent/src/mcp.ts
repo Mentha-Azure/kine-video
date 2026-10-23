@@ -14,6 +14,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { latestBaseline } from '@kine/store';
 import { AgentContext } from './context';
+import { mcpInstructions } from './mcp-instructions';
 import { ResolveError, resolveTargetDir } from './resolve';
 import { TOOLS, findTool } from './tools';
 import { RULES } from './tools/rules';
@@ -186,7 +187,8 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
     type: 'object',
     properties: {
       action: str('status | gc'),
-      maxBytes: num('gc 上限（字节，默认 20GB）'),
+      maxBytes: num('gc 上限（字节，默认 20GB）——作用于 cacheDir'),
+      workMaxBytes: num('work 目录上限（字节，默认 2GB）——frames 无条件删，超限先删 shots-* 采样帧再按 mtime LRU'),
       dryRun: bool('gc 仅预演'),
     },
     required: ['action'],
@@ -200,7 +202,7 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
     properties: {
       action: str('add | list | search | rm | gc | verify | pin | tags'),
       file: str('素材文件（add 用）'),
-      kind: str('库类：music|image|video|font|theme|palette|layout|blueprint|preset|sfx-preset|music-preset|xf-suite|widget-pack|kit'),
+      kind: str('库类：music|image|video|font|theme|palette|layout|blueprint|preset|sfx-preset|music-preset|xf-suite|widget-pack|kit|voice'),
       name: str('条目标识名（默认取文件名）'),
       ns: str('命名空间：core|ai|usr（默认 usr）'),
       tags: str('标签（空格分隔小写 kebab，≤12 字）'),
@@ -227,14 +229,32 @@ const ARG_SCHEMAS: Record<string, JsonSchema> = {
       ns: str('命名空间：usr|ai'),
       limit: num('beats 显示条数（默认 32）'),
     },
-    required: ['action'],
-    additionalProperties: false,
-  },
-  forge: {
-    type: 'object',
-    properties: {
-      action: str('create | save | list | register'),
-      kind: str('theme|palette|layout|blueprint|preset|sfx-preset|music-preset|xf-suite|kit'),
+        required: ['action'],
+        additionalProperties: false,
+      },
+      voice: {
+        type: 'object',
+        properties: {
+          action: str('list | show | synth | default'),
+          name: str('音色：name / id / library://id / @tag；缺省取标配音色'),
+          text: str('要合成的文本（单段）'),
+          file: str('文本文件（按行分段；# 与空行忽略）'),
+          out: str('输出 WAV（相对工程根；缺省 assets/voice/<音色>.wav）'),
+          speed: num('语速（默认取音色档案；>1.15 长句会拖音漏词）'),
+          normalize: bool('停顿归一化（缺省按音色档案 pause_cap）'),
+          endpoint: str('覆盖 TTS 端点（默认取音色档案）'),
+          gap: num('多段时的段间静音秒数（默认 0.62）'),
+          lead: num('多段时的起始留白秒数（默认 0.80）'),
+          peak: num('混音峰值 dBFS（默认 -1.5）'),
+        },
+        required: ['action'],
+        additionalProperties: false,
+      },
+      forge: {
+        type: 'object',
+        properties: {
+          action: str('create | save | list | register'),
+          kind: str('theme|palette|layout|blueprint|preset|sfx-preset|music-preset|xf-suite|kit|voice'),
       name: str('作品名'),
       ref: str('引用（register/save 用）'),
       file: str('数据文件（YAML/JSON）'),
@@ -318,7 +338,7 @@ export async function runMcpServer(dir: string, opts: { via?: 'explicit' | 'ance
   const baseCtx = new AgentContext({ dir, actor: 'mcp', quiet: true, dirSource: opts.via ?? 'direct' });
   const server = new Server(
     { name: 'kine', version: buildStamp() },
-    { capabilities: { tools: {}, resources: {} } },
+    { capabilities: { tools: {}, resources: {} }, instructions: mcpInstructions() },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

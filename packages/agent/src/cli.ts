@@ -97,6 +97,21 @@ function buildArgs(tool: string, p: Parsed): unknown {
         ns: flagStr(p, 'ns'),
         limit: flagNum(p, 'limit'),
       };
+    case 'voice':
+      return {
+        action: p.pos[0] ?? 'list',
+        name: flagStr(p, 'name') ?? p.pos[1],
+        text: flagStr(p, 'text'),
+        file: flagStr(p, 'file'),
+        out: flagStr(p, 'out'),
+        speed: flagNum(p, 'speed'),
+        // 三态：未传 = undefined（用音色档案的 pause_cap）；显式 --normalize false 才是关
+        normalize: p.flags.has('normalize') ? flagBool(p, 'normalize') : undefined,
+        endpoint: flagStr(p, 'endpoint'),
+        gap: flagNum(p, 'gap'),
+        lead: flagNum(p, 'lead'),
+        peak: flagNum(p, 'peak'),
+      };
     case 'forge':
       return {
         action: p.pos[0] ?? 'list',
@@ -185,7 +200,12 @@ function buildArgs(tool: string, p: Parsed): unknown {
     case 'rollback':
       return { txId: p.pos[0] ?? '' };
     case 'cache':
-      return { action: (p.pos[0] as 'status' | 'gc') ?? 'status', maxBytes: flagNum(p, 'max') !== undefined ? flagNum(p, 'max')! * 1024 ** 3 : undefined, dryRun: flagBool(p, 'dry-run') };
+      return {
+        action: (p.pos[0] as 'status' | 'gc') ?? 'status',
+        maxBytes: flagNum(p, 'max') !== undefined ? flagNum(p, 'max')! * 1024 ** 3 : undefined,
+        workMaxBytes: flagNum(p, 'work-max') !== undefined ? flagNum(p, 'work-max')! * 1024 ** 3 : undefined,
+        dryRun: flagBool(p, 'dry-run'),
+      };
     case 'doctor':
       return { fix: flagBool(p, 'fix') };
     default:

@@ -51,12 +51,22 @@ npx kine preview --at 12 --dur 4 --dir demo
 
 浏览器与 ffmpeg 的确定性参数已内置（固定字体渲染、禁用 LCD 字体平滑、`--force-color-profile=srgb` 等），保证逐帧可复现。
 
+Python 侧车首次准备（缺了它音频合成与像素指标跑不了）：
+
+```bash
+python -m venv py/kine-py/.venv
+py/kine-py/.venv/Scripts/pip install -r py/kine-py/requirements.txt   # Windows
+# py/kine-py/.venv/bin/pip install -r py/kine-py/requirements.txt     # macOS / Linux
+```
+
+ffmpeg 缺失时引擎会自动去 `~/.local/share/kine/bin/` 找；把 ffmpeg 可执行文件放那里，或设 `KINE_FFMPEG` 指向它。
+
 ---
 
 ## 架构
 
 ```
-Agent 接口层   @kine/agent      CLI ×31 子命令 + MCP server（每工具一个 tool）
+Agent 接口层   @kine/agent      CLI ×32 子命令 + MCP server（每工具一个 tool）
 工程层         @kine/store      工程目录 / 事务(changelog/rollback) / 缓存 / 版本 / 基线 / 锁 / 日志
 编译层         @kine/dsl        timeline.yaml --(zod 校验 + lint)--> IR（含时间对照表 map 与依赖图）
 渲染层         @kine/render     Edge CDP 逐帧抓帧 → ffmpeg image2pipe → .ts 分片 → concat → mux
@@ -81,7 +91,7 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 
 ---
 
-## CLI 工具总表（31 个，与 MCP 工具一一对应）
+## CLI 工具总表（32 个，与 MCP 工具一一对应）
 
 | 命令 | 用途 | 示例 |
 | --- | --- | --- |
@@ -112,6 +122,7 @@ video.mp4 + audio.wav ──mux──▶ out/<version>/<version>.mp4 ──verif
 | `versions` | 版本列表与终版指针 | `kine versions` |
 | `library` | 资源库：add / list / search / tags / rm / gc / verify / pin（内容寻址） | `kine library list --kind music` |
 | `music` | 音乐库：add（转 48k + 分析）/ info / analyze / beats / fit（长度匹配建议） | `kine music add song.wav --name demo` |
+| `voice` | 配音音色：list / show / synth（文本或按行分段的脚本 → 旁白 WAV + schedule.json） / default（切换标配音色） | `kine voice synth --file script.txt --out assets/narration.wav` |
 | `forge` | 创作层：create / save / list / register（draft → 验证 → library） | `kine forge create palette noir` |
 | `style` | 风格档案：show / apply（profile + palette 事务化） | `kine style apply --ref library://ai/noir --tx --quote "换色板"` |
 | `widgets` | widget 清单与参数示例 | `kine widgets info bdTerminal` |
@@ -254,7 +265,7 @@ demo/
 v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部**可选、有默认值**）：Tier0 铁律（符号/色彩/post 上限、purity、内置转场 15 种）不可动；Tier1 风格档案（`theme.profile: core|extended|free` + `theme.palette`）从注册色板中选配；Tier2 注册扩展（色板 / 主题 / 版式 / SFX 预设 / 蓝图进库需过校验）。默认 `core` 的工程行为与 v1 完全一致。
 
 - **用户资源库**（跨工程）：`~/.local/share/kine/library/`（`KINE_HOME` 可覆盖）；内容寻址（`blobs/<sha256>`）+ `index.json`。
-  - `kine library add <file> --kind music|theme|palette|layout|blueprint|preset|sfx-preset|xf-suite|kit|image|video|font`
+  - `kine library add <file> --kind music|theme|palette|layout|blueprint|preset|sfx-preset|xf-suite|kit|voice|image|video|font`
   - `kine library list|search|tags`；`rm|gc|verify`（`verify --dir <工程>` 检查工程引用与库内容漂移）
   - 工程内引用：`library://<id>`（或 `@tag`）；被引资产 sha256 参与 **specHash 的 assets 子键**——库内容变化在下次 compile 即显现（不静默）。
 - **创作层**：`kine forge create <kind> <name>` 产出 draft（自动骨架，或 `--file` 自备 YAML）→ `kine forge register <name>` 自动验证（结构校验 + 可选 `--visual` 黑电平/密度/边缘带门槛）→ 晋升 `library` 状态并自动打色相标签；验证失败**不阻断**，保持 draft。
@@ -303,7 +314,8 @@ v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部
 
 ## 规格文档
 
-开发依据：`（内部设计规格书，不随仓库分发）`（01 产品定位 → 10 路线图），
+开发依据：内部设计规格书 01–10（产品定位 → 路线图），**不随仓库分发**；
 以及源项目《world.execute(me) MV 制作全案》的全部经验固化（每个历史坑均已落成 lint / 指标 / 流程）。
 
-另有**视觉设计学习文档**：`docs/视觉设计教学文档/`（10 本设计书 + 资源清单）与 `docs/视觉设计-学习指引.md`（配色/字体/版式/Logo 的 AI 决策映射与 Kine 落点）。
+另有**视觉设计学习文档**：`docs/视觉设计-学习指引.md`（配色/字体/版式/Logo 的 AI 决策映射与 Kine 落点）。
+配套的 10 本设计书 PDF 属第三方版权资料，**不随仓库分发**（书单见 `docs/视觉设计教学文档/00_资源清单.md`，需要时自行备到同目录）。

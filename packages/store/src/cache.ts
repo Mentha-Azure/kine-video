@@ -193,3 +193,144 @@ export function cacheGc(cacheDir: string, opts: { maxBytes?: number; dryRun?: bo
 export function cacheDirSize(cacheDir: string): number {
   return dirSize(cacheDir);
 }
+
+// ---------------------------------------------------------------- work 目录（派生/采样/复用）
+// work = <workDir>/<visualHash8>/{frames,shots-*,chunk,browser,...}
+//   scratch  frames    纯输出转储（只有 --keep-frames 时才有人看）→ 无条件删
+//   samples  shots-*   指标采样帧（_index.json 跨调用复用，但体积最大）→ 超预算时优先删
+//   cache    chunk/browser  分片编码 / Chromium profile（重建代价高）→ 仍超预算时按 mtime LRU 整目录驱逐
+const SCRATCH_WORK_DIRS = new Set(['frames']);
+export type WorkSubKind = 'scratch' | 'samples' | 'cache';
+export function classifyWorkSub(name: string): WorkSubKind {
+  if (SCRATCH_WORK_DIRS.has(name)) return 'scratch';
+  if (name.startsWith('shots-')) return 'samples';
+  return 'cache';
+}
+
+export interface WorkSubUsage {
+  hash: string;
+  sub: string;
+  kind: WorkSubKind;
+  bytes: number;
+  mtimeMs: number;
+}
+
+export interface WorkUsage {
+  totalBytes: number;
+  scratchBytes: number;
+  sampleBytes: number;
+  cacheBytes: number;
+  byName: Record<string, number>;
+  subs: WorkSubUsage[];
+}
+
+/** work 目录逐项统计（按 <hash>/<sub> 明细 + 三档小计） */
+export function workStatus(workDir: string): WorkUsage {
+  const usage: WorkUsage = { totalBytes: 0, scratchBytes: 0, sampleBytes: 0, cacheBytes: 0, byName: {}, subs: [] };
+  let hashes: string[] = [];
+  try {
+    hashes = fs.readdirSync(workDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return usage;
+  }
+  for (const hash of hashes) {
+    const hd = path.join(workDir, hash);
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(hd, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue; // 散落文件正常不该有，不计入
+      const sub = e.name;
+      const sd = path.join(hd, sub);
+      const bytes = dirSize(sd);
+      let mtimeMs = 0;
+      try { mtimeMs = fs.statSync(sd).mtimeMs; } catch { /* ignore */ }
+      const kind = classifyWorkSub(sub);
+      usage.subs.push({ hash, sub, kind, bytes, mtimeMs });
+      usage.totalBytes += bytes;
+      if (kind === 'scratch') usage.scratchBytes += bytes;
+      else if (kind === 'samples') usage.sampleBytes += bytes;
+      else usage.cacheBytes += bytes;
+      usage.byName[sub] = (usage.byName[sub] ?? 0) + bytes;
+    }
+  }
+  usage.subs.sort((a, b) => b.bytes - a.bytes);
+  return usage;
+}
+
+export interface WorkGcResult {
+  /** 被删的相对路径：<hash>/<sub> 或整个 <hash> */
+  removedDirs: string[];
+  scratchBytes: number;
+  sampleBytes: number;
+  evictedBytes: number;
+  freedBytes: number;
+  keptBytes: number;
+}
+
+/**
+ * work 目录回收（v5 补：cacheGc 原本只清 cacheDir，work 一直没人管）
+ *   ① scratch（frames）无条件删——零复用价值
+ *   ② 仍超 maxBytes：删所有 samples（shots-*，体积最大、可按 _index.json 重采）
+ *   ③ 再超：按 <hash> 的 mtime 从旧到新整目录驱逐（chunk/browser 一起走）
+ */
+export function workGc(workDir: string, opts: { maxBytes?: number; dryRun?: boolean } = {}): WorkGcResult {
+  const maxBytes = opts.maxBytes ?? 2 * 1024 * 1024 * 1024;
+  const res: WorkGcResult = { removedDirs: [], scratchBytes: 0, sampleBytes: 0, evictedBytes: 0, freedBytes: 0, keptBytes: 0 };
+  if (!fs.existsSync(workDir)) return res;
+
+  const del = (rel: string) => {
+    if (!opts.dryRun) {
+      try { fs.rmSync(path.join(workDir, rel), { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  };
+
+  // ① scratch
+  const before = workStatus(workDir);
+  let total = before.totalBytes;
+  for (const s of before.subs) {
+    if (s.kind !== 'scratch') continue;
+    res.removedDirs.push(`${s.hash}/${s.sub}`);
+    res.scratchBytes += s.bytes;
+    total -= s.bytes;
+    del(`${s.hash}/${s.sub}`);
+  }
+
+  // ② samples（只在超预算时）
+  if (total > maxBytes) {
+    for (const s of before.subs) {
+      if (s.kind !== 'samples') continue;
+      if (total <= maxBytes) break;
+      res.removedDirs.push(`${s.hash}/${s.sub}`);
+      res.sampleBytes += s.bytes;
+      total -= s.bytes;
+      del(`${s.hash}/${s.sub}`);
+    }
+  }
+
+  // ③ 整目录 LRU（再不够才动 chunk/browser）
+  if (total > maxBytes) {
+    let hashes: string[] = [];
+    try {
+      hashes = fs.readdirSync(workDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch { /* ignore */ }
+    const dirs = hashes.map((hash) => {
+      const hd = path.join(workDir, hash);
+      let bytes = 0;
+      let mtimeMs = 0;
+      try { bytes = dirSize(hd); } catch { /* ignore */ }
+      try { mtimeMs = fs.statSync(hd).mtimeMs; } catch { /* ignore */ }
+      return { hash, bytes, mtimeMs };
+    });
+    for (const d of dirs.sort((a, b) => a.mtimeMs - b.mtimeMs)) {
+      if (total <= maxBytes) break;
+      res.removedDirs.push(d.hash);
+      res.evictedBytes += d.bytes;
+      total -= d.bytes;
+      del(d.hash);
+    }
+  }
+
+  res.freedBytes = res.scratchBytes + res.sampleBytes + res.evictedBytes;
+  res.keptBytes = Math.max(0, total);
+  return res;
+}

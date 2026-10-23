@@ -3,7 +3,7 @@
 // 创作与注册分离：create/save 自由创作（draft 即可被 library:// 引用使用）；
 // register 只做「自动验证」，通过才入册（library），失败不阻断创作（保持 draft）。
 // 可创作对象（kind）：theme / palette / layout / blueprint / preset / sfx-preset / music-preset / xf-suite / kit
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -31,6 +31,7 @@ export const FORGE_KINDS = [
   'music-preset',
   'xf-suite',
   'kit',
+  'voice',
 ] as const;
 export type ForgeKind = (typeof FORGE_KINDS)[number];
 
@@ -80,6 +81,16 @@ function skeleton(kind: ForgeKind, name: string): Record<string, unknown> {
       return { transitions: ['wipe_redbar', 'wipe_h'] };
     case 'kit':
       return { items: [] };
+    case 'voice':
+      return {
+        label: name,
+        endpoint: 'http://127.0.0.1:9880/tts',
+        ref_audio: '',
+        ref_text: '',
+        language: 'Chinese',
+        speed: 1.0,
+        pause_cap: { max_pause: 0.5, to: 0.46 },
+      };
   }
 }
 
@@ -192,6 +203,24 @@ export function validateForgeData(kind: ForgeKind, data: unknown): { errors: str
     }
   } else if (kind === 'kit') {
     if (data.items !== undefined && !Array.isArray(data.items)) errors.push('items 必须是数组');
+  } else if (kind === 'voice') {
+    // 配音音色：参考音 3–10 秒、ref_text 逐字一致、TTS 端点可用（GPT-SoVITS 或兼容 /tts 接口）
+    const ep = data.endpoint;
+    if (typeof ep !== 'string' || !/^https?:\/\//.test(ep)) errors.push('endpoint 必须是 http(s) URL（如 http://127.0.0.1:9880/tts）');
+    const ra = data.ref_audio;
+    if (typeof ra !== 'string' || ra.length === 0) errors.push('ref_audio 缺失（参考音频路径）');
+    else if (!existsSync(ra)) errors.push(`ref_audio 文件不存在：${ra}`);
+    else if (statSync(ra).size < 20 * 1024) warnings.push('ref_audio 体积过小（可能是占位文件）');
+    if (typeof data.ref_text !== 'string' || data.ref_text.trim().length === 0) errors.push('ref_text 缺失（必须与参考音频逐字一致）');
+    if (data.speed !== undefined) {
+      if (typeof data.speed !== 'number' || data.speed < 0.6 || data.speed > 1.6) errors.push('speed 需在 0.6..1.6');
+      else if (data.speed > 1.15) warnings.push('speed>1.15 长句易拖音/漏词（建议 ≤1.10）');
+    }
+    if (data.pause_cap !== undefined && data.pause_cap !== null) {
+      const pc = data.pause_cap;
+      if (!isObj(pc) || typeof pc.max_pause !== 'number' || typeof pc.to !== 'number') errors.push('pause_cap 需为 {max_pause, to} 数字对，或 null');
+      else if (pc.to >= pc.max_pause) errors.push('pause_cap.to 必须小于 max_pause');
+    }
   }
   return { errors, warnings };
 }

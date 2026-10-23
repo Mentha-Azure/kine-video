@@ -20,12 +20,12 @@ import { atomicWriteFile } from './layout';
 export type LibraryKind =
   | 'music' | 'image' | 'video' | 'font'
   | 'theme' | 'palette' | 'layout' | 'blueprint' | 'preset'
-  | 'sfx-preset' | 'music-preset' | 'xf-suite' | 'widget-pack' | 'kit';
+  | 'sfx-preset' | 'music-preset' | 'xf-suite' | 'widget-pack' | 'kit' | 'voice';
 
 export const LIBRARY_KINDS: LibraryKind[] = [
   'music', 'image', 'video', 'font',
   'theme', 'palette', 'layout', 'blueprint', 'preset',
-  'sfx-preset', 'music-preset', 'xf-suite', 'widget-pack', 'kit',
+  'sfx-preset', 'music-preset', 'xf-suite', 'widget-pack', 'kit', 'voice',
 ];
 
 /** 需要 blob 落盘的库类 */

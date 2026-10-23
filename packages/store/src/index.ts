@@ -13,3 +13,4 @@ export * from './doctor';
 export * from './pyside';
 export * from './paths';
 export * from './library';
+export * from './voices';

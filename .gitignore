@@ -8,3 +8,11 @@ __pycache__/
 *.pyc
 .smoke/
 .DS_Store
+
+# 本地学习资料：第三方版权 PDF 与获取清单不随仓库分发（仅保留 学习指引.md）
+docs/视觉设计教学文档/
+
+# 本机路径与临时产物
+*.log
+.DS_Store
+Thumbs.db
