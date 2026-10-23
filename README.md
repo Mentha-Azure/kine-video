@@ -1,5 +1,9 @@
 # Kine — AI 原生的确定性视频剪辑软件
 
+<img src="docs/media/hero-tide-table.gif" width="760" alt="Kine 渲染的短片《潮汐表》片段">
+
+<sub>以上动画是 `kine render` 的真实产出：30 秒短片《潮汐表》第 1–4 秒（720p / 12fps 采样）</sub>
+
 > **第 N 帧 = f(N)**。Kine（/kaɪn/，取自 kinesis「运动」）是第一个为 AI 智能体工作方式设计的视频剪辑 / 合成软件：
 > 读事实 → 改 DSL → 量结果 → 验证出片。单一真源，逐帧确定性，可度量优于可感觉。
 
@@ -7,7 +11,25 @@
 - **人类作者是第二用户**：对话式改片，看 3–5 秒成品形态短预览与 changelog。
 - **不提供拖拽实时编辑 UI**（非目标）；人类工程师可直接读 DSL / IR 扩展 widget 与指标。
 
+## 用 Kine 做的片子
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/media/shot-world-execute-me.jpg" width="300"></td>
+    <td align="center" width="33%"><img src="docs/media/shot-deepseek.jpg" width="300"></td>
+    <td align="center" width="33%"><img src="docs/media/shot-cathedral.jpg" width="300"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>《world.execute(me)》MV</b><br>25 幕 / 121.9s / 0 位图素材<br>Kine 的设计起点</sub></td>
+    <td align="center"><sub><b>公司介绍片</b><br>5 分 28 秒 / 浅色主题<br>图表 · 图片资产 · 逐屏信息</sub></td>
+    <td align="center"><sub><b>钢琴曲可视化</b><br>2 分 48 秒 / 原画满幅 + 频谱<br>背景插画由 Seedream 生成</sub></td>
+  </tr>
+</table>
+
+三张截图均为 Kine 成片抽帧。画面差异说明：第一张为纯代码绘制（0 位图素材），第二张含外部照片资料，第三张的背景插画由 **Seedream** 生成（引擎只负责画面合成、频谱与浮尘）。
+
 ---
+
 
 ## 快速开始（M0 验收五命令）
 
@@ -320,4 +342,13 @@ v2 在「护栏即唯一值」之上引入分层自由度（Tier 模型，全部
 以及源项目《world.execute(me) MV 制作全案》的全部经验固化（每个历史坑均已落成 lint / 指标 / 流程）。
 
 另有**视觉设计学习文档**：`docs/视觉设计-学习指引.md`（配色/字体/版式/Logo 的 AI 决策映射与 Kine 落点）。
-配套的 10 本设计书 PDF 属第三方版权资料，**不随仓库分发**（书单见 `docs/视觉设计教学文档/00_资源清单.md`，需要时自行备到同目录）。
+配套的 10 本设计书 PDF 属第三方版权资料，**不随仓库分发**，需要时自行备到本地。
+
+---
+
+## 支持
+
+如果 Kine 帮你省下了加班时间，可以请作者喝杯奶茶——**完全自愿，不影响任何功能**。
+
+<img src="docs/donate-wechat.png" width="160" alt="微信收款码">
+

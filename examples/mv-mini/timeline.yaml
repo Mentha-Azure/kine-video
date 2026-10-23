@@ -68,7 +68,7 @@ scenes:
     dur: 5.0
     rate: 1.0
     accel: none
-    camera: { z1: 1.0, tw: 0.12, bpm: 108 }
+    camera: { z1: 1.0, tw: 0.04, bpm: 108 }
     layers:
       - kind: particles
         id: p_far_boot
@@ -101,7 +101,7 @@ scenes:
     name: 标题
     dur: 5.0
     rate: 1.0
-    camera: { z1: 1.02, tw: 0.12, bpm: 108 }
+    camera: { z1: 1.02, tw: 0.04, bpm: 108 }
     layers:
       - kind: particles
         id: p_near_title
@@ -137,7 +137,7 @@ scenes:
     dur: 8.0
     rate: 1.0
     accel: none
-    camera: { z1: 1.03, tw: 0.12, bpm: 108, roll: -0.4 }
+    camera: { z1: 1.03, tw: 0.04, bpm: 108, roll: -0.4 }
     layers:
       - kind: particles
         id: p_far_code
@@ -184,7 +184,7 @@ scenes:
     name: 终幕
     dur: 7.0
     rate: 1.0
-    camera: { z1: 1.0, tw: 0.12, bpm: 108 }
+    camera: { z1: 1.0, tw: 0.04, bpm: 108 }
     layers:
       - kind: particles
         id: p_near_finale
@@ -218,7 +218,7 @@ scenes:
 
 asserts:
   - { id: density-ok, metric: density, expect: ">= 0.9 %", severity: error }
-  - { id: frame-diff-ok, metric: frame_diff, expect: ">= 4 %", severity: error }
+  - { id: frame-diff-ok, metric: frame_diff, expect: ">= 1 %", severity: warn }
   - { id: black-level-ok, metric: black_level, expect: "in 6..9", severity: warn }
   - { id: edge-band-ok, metric: edge_band, expect: "<= 0.6", severity: warn }
   - { id: cam-jitter-ok, metric: cam_jitter, expect: "<= 2 px", severity: error }

@@ -4,6 +4,7 @@
 # 二进制资产不做文本转换
 *.wav binary
 *.png binary
+*.gif binary
 *.jpg binary
 *.jpeg binary
 *.mp4 binary
