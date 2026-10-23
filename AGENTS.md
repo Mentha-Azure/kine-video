@@ -56,6 +56,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 | 资源库 | `kine library add <file> --kind music` / `kine library list --kind theme` / `kine library tags` / `kine library seed`（注册内置种子色板 core/*，幂等） |
 | 音乐库 | `kine music add <file> --name demo` / `kine music fit` |
 | 创作资源 | `kine forge create palette noir --tags noir` → `kine forge register noir` |
+| 配音 | `kine voice list / show / synth / default`——音色 = 参考音 3–10 秒 + ref_text 逐字一致 + TTS 端点；**音色档案与模型不在仓库**，先 `kine forge create voice <name>` 建档案再 register |
 | 应用色板 | `kine style apply --ref library://ai/noir --tx --quote "换配色"` |
 | 用户控制台 | `pnpm console` → http://127.0.0.1:4747（库浏览 / 音乐上传入库 / 工程与磁盘） |
 | 规则速查 | `kine rules [W-SYNTH-001]` |

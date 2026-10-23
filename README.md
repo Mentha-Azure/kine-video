@@ -64,6 +64,30 @@ npx kine preview --at 12 --dur 4 --dir demo
 
 ---
 
+## 开箱有什么
+
+仓库自带的东西全部是**代码与声明**，不含任何第三方素材：
+
+| 类别 | 数量 | 内容 | 怎么看 / 怎么用 |
+| --- | --- | --- | --- |
+| 工程模板 | 2 | `mv-mini`（24s 演示片，含合成曲）/ `blank` | `kine init <目录> --template mv-mini` |
+| widget | 34 | bd 族 16（标题/终端/频谱/仪表…）+ draw 族 18（地球/超立方/心形/生命游戏…） | `kine widgets`、`kine widgets info <name>` |
+| 种子色板 | 11 | `noir` `midnight` `forest` `wine` `bw-high-contrast` `amber` `ember` `cyan-lab` `violet` `ice` `light-paper` | `kine library seed` 后引用 `library://core/noir` |
+| SFX 合成器 | 7 | `heartbreak` `rain` `piano_motif` `keyboard` `tape` `drone` `glitch`——全部离线数学生成，**零音频素材** | `audio.sfx.events` 声明事件 + `params` |
+| 转场 | 15 | A 遮罩 7（红条/百叶窗/对角/爆开…）/ B 位移 4 / C 缩放 2 / D 甩镜 2 | `shot.transition: { kind, variant }` |
+| 图层类型 | 7 | `particles` `widget` `text` `image` `subtitles` `fx`，外加 `video`（明确报错禁用，见下） | `scenes[].layers[]` |
+| 示例曲 | 1 | mv-mini 的 24s 曲子，由 `tools/gen-demo-song.py` 用正弦波合成，可重现 | 直接 `kine render` 即可听到 |
+| 本地控制台 | 1 | 库浏览 / 音乐上传入库 / 工程列表 | `pnpm console` → `127.0.0.1:4747` |
+
+**需要自备的**（引擎只提供接口，不附带内容）：
+
+- **音乐**：`kine music add <file>` 导入自己的音频（转 48k + BPM/拍点分析 + 内容寻址去重），存本地库 `~/.local/share/kine/library`
+- **配音音色**：见下方「配音（可选依赖）」，需自建 TTS 服务与音色档案
+- **图片 / 视频素材**：`image` 图层用工程相对路径或 `library://` 引用；`video` 图层当前明确报 `E-ASSET-002`（无确定性丢帧方案，故意不支持）
+- **色板 / 主题 / 版式扩展**：`kine forge create <kind> <name>` 建 draft → `kine forge register` 入库
+
+---
+
 ## 环境依赖
 
 | 依赖 | 用途 | 发现顺序 |
@@ -84,6 +108,17 @@ py/kine-py/.venv/Scripts/pip install -r py/kine-py/requirements.txt   # Windows
 ```
 
 ffmpeg 缺失时引擎会自动去 `~/.local/share/kine/bin/` 找；把 ffmpeg 可执行文件放那里，或设 `KINE_FFMPEG` 指向它。
+
+**配音（可选依赖）**：`kine voice` 调外部 TTS 服务——只要实现 `POST <endpoint>` 收 JSON、返回音频即可（GPT-SoVITS 的 `/tts` 就是这种形态）。仓库**不含音色模型，也不含任何音色档案**，音色需要自己建：
+
+```bash
+kine forge create voice narrator      # 档案骨架（endpoint 默认 http://127.0.0.1:9880/tts）
+#   编辑 draft：ref_audio 填 3–10 秒自然语音，ref_text 必须与音频逐字一致
+kine forge register narrator          # 校验：端点可达 + 参考音时长 + 文本非空
+kine voice synth --name narrator --file script.txt --out assets/narration.wav
+```
+
+`script.txt` 按行分段（`#` 开头与空行忽略）。合成产出 WAV 与同名 `.schedule.json`（每段的 `starts` / `dur`，可直接用来对齐幕长或字幕）。音色档案存在 `~/.local/share/kine/library`（`KINE_HOME` 可改），不随工程走。
 
 ---
 
