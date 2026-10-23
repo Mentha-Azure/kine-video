@@ -1,8 +1,8 @@
 # Kine — AI 原生的确定性视频剪辑软件
 
-<img src="docs/media/hero-tide-table.gif" width="760" alt="Kine 渲染的短片《潮汐表》片段">
+<img src="docs/media/hero-world-execute-me.gif" width="480" alt="Kine 渲染的 MV 片段：点阵人形与超立方体">
 
-<sub>以上动画是 `kine render` 的真实产出：30 秒短片《潮汐表》第 1–4 秒（720p / 12fps 采样）</sub>
+<sub>以上动画是 <code>kine render</code> 的真实产出：《world.execute(me)》MV 第 26–38 秒（480p / 8fps 采样，原片 1080p60）</sub>
 
 > **第 N 帧 = f(N)**。Kine（/kaɪn/，取自 kinesis「运动」）是第一个为 AI 智能体工作方式设计的视频剪辑 / 合成软件：
 > 读事实 → 改 DSL → 量结果 → 验证出片。单一真源，逐帧确定性，可度量优于可感觉。
