@@ -35,7 +35,9 @@ npx kine preview --at 12 --dur 4 --dir demo
 ```
 
 > `npx kine` 通过 workspace bin（`packages/agent/bin/kine.mjs`）入口运行；也可等价使用
-> `node packages/agent/bin/kine.mjs <cmd>` 或 `npx tsx packages/agent/src/cli.ts <cmd>`。
+> `node packages/agent/bin/kine.mjs <cmd>` 或 `pnpm kine <cmd>`。
+> ⚠️ 本仓库未发布到 npm；npm 上那个名为 `kine` 的包是无关的旧包（kinesis 客户端）。
+> `pnpm install` 之后 `npx` 会优先用本地 bin，但如果它提示要下载外来 `kine`，请改用上面后两种写法。
 > 所有命令未指定 `--dir` 时的定位顺序：① 启动目录向上查找 `timeline.yaml`；② 向下扫描（深度 3）唯一命中即用；③ 多个命中取**最近登记**的工程（返回 facts 会注明自动定位结果）；④ 全无则报 `E-PROJ-*` 并列出候选。`kine projects` 可查看/清理登记。
 
 ---
@@ -229,7 +231,7 @@ demo/
 
 | 项目 | 状态 |
 | --- | --- |
-| `npx vitest run` | 15 文件 / 73 用例全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3/v4 守卫、v5 守卫：浅色模式/字幕/色板浅底校验） |
+| `npx vitest run` | 17 文件全绿（含 dir 自动定位、kine-py 协议行净化与静音窗回归、transition_spike 边界分类、v3/v4/v5/v6 守卫、voice 停顿归一化） |
 | 7 个回归 fixture | 编译验证全绿（3 个预期命中 lint 错误码；short-transition 用于 transition_spike 设计内豁免实测） |
 | M0 五命令验收（mv-mini） | `init`（绝对/相对路径 × blank/mv-mini 模板）· `audit`（语法 0/0、purity 0、运行时全轴扫描 0 错误）· `render`（v0.4，1440 帧全缓存命中，6.8s）· `verify`（帧数/时长/音频/抽检全过，tail-clean 为已解释 WARN）· `preview --at 12 --dur 4`（含音轨成品形态）——全 PASS |
 | MCP 冒烟 | initialize / tools(29) / map / probe / resources(7) 全通过 |

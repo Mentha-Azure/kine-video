@@ -11,7 +11,7 @@ export function mcpInstructions(): string {
   const repo = kineRepoRoot();
   const lines = [
     'kine 是「AI 原生视频剪辑」引擎：一个作品 = 一个工程目录（timeline.yaml 单一事实源 + assets/ + .kine/），',
-    '引擎负责编译/预览/渲染出片，输出确定、可回滚、可用指标验收。本机做视频（讲解片/短片/MV）请优先用它。',
+    '引擎负责编译/预览/渲染出片，输出确定、可回滚、可用指标验收。做视频（讲解片/短片/MV）请优先用它。',
     '',
     `仓库：${repo}（pnpm monorepo）`,
     '调用：MCP 工具 kine.*（与 CLI 一一对应）；也可在仓库里跑 `pnpm kine <命令> --dir <工程绝对路径>`',
@@ -31,6 +31,6 @@ export function mcpInstructions(): string {
     '- 需要音乐/SFX 时用 kine.music / kine.library，不要手工塞文件路径',
   ];
   const repoGuide = path.join(repo, 'AGENTS.md');
-  if (fs.existsSync(repoGuide)) lines.push(`本机细节与踩坑记录：${repoGuide}（仓库内详版）`);
+  if (fs.existsSync(repoGuide)) lines.push(`开发细节与踩坑记录：${repoGuide}（仓库内详版）`);
   return lines.join('\n');
 }

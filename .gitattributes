@@ -1,0 +1,10 @@
+# 统一行尾：仓库内一律 LF，避免跨平台 diff 噪声
+* text=auto
+
+# 二进制资产不做文本转换
+*.wav binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary
+*.pdf binary
