@@ -5,7 +5,7 @@ Kine 是确定性视频剪辑/合成软件：**一个工程 = 一个目录**（`
 
 ## 接入方式
 
-- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 31 个）。
+- **MCP**：server 名 `kine`，工具名 `kine.<tool>`（与 CLI 子命令同名，共 32 个）。
   - 不传 `dir` 的工程定位顺序：① 启动目录向上查找 `timeline.yaml`；② 向下扫描（深度 3）唯一命中即用；③ 多个命中取**最近登记**的工程（返回 facts 会注明）；④ 失败报 `E-PROJ-*` 并列候选（`kine.projects` 可查看/清理登记）。
   - 任何工具都可传参数 `dir="<工程目录>"` 覆盖默认目录（`kine.init` 除外——它的 `dir` 是"目标工程目录"语义）；
   - 资源：`kine://project/info`、`kine://map`、`kine://baseline`、`kine://rules`、`kine://library`、`kine://widgets`、`kine://music`。
